@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     }
     const { email, password } = parsed.data;
     const slugFromBody = parsed.data.restaurantSlug?.trim() || null;
-    const slugFromHost = getTenantSlugFromHost();
+    const slugFromHost = await getTenantSlugFromHost();
     const tenantSlug = slugFromHost || slugFromBody;
 
     if (!tenantSlug) {

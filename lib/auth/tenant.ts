@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 
-export function getTenantSlugFromHost() {
-  const hdrs = headers();
+export async function getTenantSlugFromHost(): Promise<string | null> {
+  const hdrs = await headers();
   const host = hdrs.get("x-forwarded-host") || hdrs.get("host") || "";
   // Expect pattern <slug>.<domain> or localhost:<port>
   const parts = host.split(":")[0].split(".");

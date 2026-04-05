@@ -30,7 +30,9 @@ export default function RegisterPage() {
       if (!res.ok) {
         throw new Error(data?.error || "Failed to register");
       }
-      setSuccess("Workspace created. You can now sign in.");
+      // Redirect to onboarding
+      const rid = data?.restaurant?.id;
+      window.location.href = "/onboarding" + (rid ? `?rid=${encodeURIComponent(rid)}` : "");
     } catch (err: any) {
       setError(err.message || "Something went wrong");
     } finally {

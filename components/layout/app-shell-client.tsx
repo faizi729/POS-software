@@ -173,6 +173,12 @@ export function AppShellClient({
                 <button
                   type="button"
                   className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-sm font-medium text-text-secondary transition hover:bg-bg-surface hover:text-text-primary"
+                  onClick={async () => {
+                    try {
+                      await fetch("/api/auth/logout", { method: "POST" });
+                    } catch {}
+                    window.location.href = "/login";
+                  }}
                 >
                   <span className="flex items-center gap-3">
                     <LogOut className="h-4 w-4" />

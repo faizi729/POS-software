@@ -99,11 +99,11 @@ export async function getCustomers(
     filter.$or = [{ name: regex }, { phone: regex }];
   }
 
-  const sortField =
-    options.sort === "spent" ? { totalSpent: -1 as const } :
-    options.sort === "points" ? { loyaltyPoints: -1 as const } :
-    options.sort === "recent" ? { lastVisitAt: -1 as const } :
-    { lastVisitAt: -1 as const };
+  const sortField: Record<string, 1 | -1> =
+    options.sort === "spent" ? { totalSpent: -1 } :
+    options.sort === "points" ? { loyaltyPoints: -1 } :
+    options.sort === "recent" ? { lastVisitAt: -1 } :
+    { lastVisitAt: -1 };
 
   const customers = await Customer.find(filter)
     .sort(sortField)

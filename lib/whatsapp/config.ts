@@ -14,8 +14,8 @@
  */
 
 function env(key: string, fallback?: string): string {
-  const value = process.env[key] ?? fallback;
-  if (!value) throw new Error(`Missing env var: ${key}`);
+  const value = process.env[key] ?? fallback ?? "";
+  // Do NOT throw during build - APIs will validate at runtime before use.
   return value;
 }
 

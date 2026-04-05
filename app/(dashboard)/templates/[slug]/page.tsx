@@ -776,7 +776,7 @@ export default function TemplateEditorPage() {
           </button>
 
           <Link
-            href={`/template/${slug}`}
+            href={{ pathname: "/template/[slug]", query: { slug } }}
             target="_blank"
             className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-[11px] font-medium text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary"
           >

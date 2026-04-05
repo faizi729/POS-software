@@ -5,10 +5,10 @@ import { connectToDatabase } from "@/lib/db/connect";
 import { ReceiptTemplate } from "@/models";
 import { Types } from "mongoose";
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, context: any) {
   try {
     await connectToDatabase();
-    const id = params?.id ?? "";
+    const id = context?.params?.id ?? "";
     if (!Types.ObjectId.isValid(id)) {
       return ok({ error: "Invalid id" }, { status: 404 });
     }
@@ -22,10 +22,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, context: any) {
   try {
     await connectToDatabase();
-    const id = params?.id ?? "";
+    const id = context?.params?.id ?? "";
     if (!Types.ObjectId.isValid(id)) {
       return ok({ error: "Invalid id" }, { status: 404 });
     }

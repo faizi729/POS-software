@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { ok, handleRouteError } from "@/lib/api/response";
 import { connectToDatabase } from "@/lib/db/connect";
-import { ReceiptTemplate } from "@/models";
+import { ReceiptTemplate, Restaurant } from "@/models";
 
 const saveSchema = z.object({
   restaurantId: z.string().min(1),
@@ -24,6 +24,16 @@ export async function POST(request: NextRequest) {
       structured: payload.structured,
       layout: payload.layout
     });
+
+    // Mark onboarding progress
+    await Restaurant.findByIdAndUpdate(payload.restaurantId, {
+      $set: { "onboarding.receiptTemplateSaved": true },
+      $currentDate: {
+        "onboarding.completedAt": {
+          $type: "date"
+        } as any
+      }
+    }).catch(() => {});
 
     return ok({ id: String(doc._id) });
   } catch (error) {

@@ -20,6 +20,11 @@ const restaurantSchema = new Schema(
       phone: String,
       email: String,
       address: String
+    },
+    onboarding: {
+      menuImported: { type: Boolean, default: false },
+      receiptTemplateSaved: { type: Boolean, default: false },
+      completedAt: Date
     }
   },
   { timestamps: true }

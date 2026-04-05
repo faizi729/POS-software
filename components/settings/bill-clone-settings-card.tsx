@@ -20,7 +20,7 @@ type CloneResponse = {
   error?: string;
 };
 
-export function BillCloneSettingsCard({ restaurantName, restaurantId }: { restaurantName: string; restaurantId?: string }) {
+export function BillCloneSettingsCard({ restaurantName, restaurantId, onTemplateSaved }: { restaurantName: string; restaurantId?: string; onTemplateSaved?: (templateId: string) => void }) {
   const [isPending, startTransition] = useTransition();
   const [fileName, setFileName] = useState<string>("");
   const [clone, setClone] = useState<null | {
@@ -361,6 +361,9 @@ export function BillCloneSettingsCard({ restaurantName, restaurantId }: { restau
         return;
       }
       setTemplateId(payload.data.id);
+      try {
+        onTemplateSaved?.(payload.data.id);
+      } catch {}
     } catch (e) {
       console.error(e);
       setError("Failed to save receipt template.");
@@ -493,7 +496,6 @@ export function BillCloneSettingsCard({ restaurantName, restaurantId }: { restau
               </a>
               {restaurantId ? (
                 <Button
-                  variant="default"
                   className="h-11 rounded-2xl"
                   onClick={() => void saveTemplate()}
                   disabled={!!templateId}
@@ -689,7 +691,6 @@ export function BillCloneSettingsCard({ restaurantName, restaurantId }: { restau
               Preview
             </Button>
             <Button
-              variant="default"
               className="h-10 rounded-2xl"
               onClick={() => {
                 if (editTab === "visual") applyVisualToLayout();
