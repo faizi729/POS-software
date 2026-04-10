@@ -553,11 +553,34 @@ export async function createMenuNode(input: {
 
   const restaurantId = toId(input.restaurantId);
   const menuId = input.menuId ? toId(input.menuId) : undefined;
-  const parentId = input.parentId ? toId(input.parentId) : undefined;
+  const parentId =
+    input.nodeType === "subcategory" && input.parentId ? toId(input.parentId) : undefined;
   const slug = String(input.slug || "").trim();
   const name = String(input.name || "").trim();
   if (!name || !slug) {
     throw new Error("Menu node name/slug is required.");
+  }
+
+  if (input.nodeType === "subcategory") {
+    if (!input.parentId) {
+      throw new Error("Parent category is required for subcategory.");
+    }
+    const parentCategory = await MenuCategory.findOne({
+      _id: parentId,
+      restaurantId,
+      ...(menuId ? { menuId } : { menuId: { $exists: false } })
+    })
+      .select({ name: 1, slug: 1 })
+      .lean();
+    if (!parentCategory) {
+      throw new Error("Parent category not found.");
+    }
+    if (
+      String(parentCategory.name ?? "").trim().toLowerCase() === name.toLowerCase() ||
+      String(parentCategory.slug ?? "").trim().toLowerCase() === slug.toLowerCase()
+    ) {
+      throw new Error("Subcategory name must be different from parent category.");
+    }
   }
 
   // Idempotent create: protects against double-submit / retries and cooperates with unique indexes.

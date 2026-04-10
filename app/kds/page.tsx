@@ -14,7 +14,8 @@ import {
   Volume2,
   VolumeX,
   Wifi,
-  WifiOff
+  WifiOff,
+  ReceiptText
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
@@ -89,6 +90,136 @@ const STATUS_CONFIG = {
   }
 } as const;
 
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function formatStyledLine(escaped: string) {
+  if (/^\[hr\]$/i.test(escaped)) return `<div class="line rule"></div>`;
+  const content = formatStyledInline(escaped.replaceAll(/\[br\]/gi, "<br/>"));
+  return `<div class="line">${content}</div>`;
+}
+
+function formatStyledInline(escaped: string) {
+  return escaped
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/_([^_]+)_/g, "<em>$1</em>")
+    .replace(/__([^_]+)__/g, "<u>$1</u>")
+    .replace(/\[small\]([^[]+)\[\/small\]/gi, '<span class="small">$1</span>')
+    .replace(/\[big\]([^[]+)\[\/big\]/gi, '<span class="big">$1</span>');
+}
+
+async function fetchRestaurantReceiptTemplate() {
+  try {
+    const res = await fetch("/api/bill/clone/by-restaurant", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+    const payload = (await res.json()) as { success: boolean; data?: any };
+    if (!res.ok || !payload?.success) return null;
+    return payload.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function renderKdsItemsOnlyFromClone(params: { layout: any; order: KDSOrder }) {
+  const { layout, order } = params;
+  const sections: any[] = Array.isArray(layout?.sections) ? layout.sections : [];
+  const items = Array.isArray(order.items) ? order.items : [];
+  const headerSection = sections.find((s) => s?.type === "header");
+  const footerSection = sections.find((s) => s?.type === "footer");
+
+  function sectionAlign(
+    cls: string,
+    alignment: "left" | "center" | "right" | undefined,
+    lines: string[] = []
+  ) {
+    const align = alignment === "center" ? "center" : alignment === "right" ? "right" : "left";
+    return `<div class="section ${cls}" style="text-align:${align}">${lines
+      .map((l) => formatStyledLine(escapeHtml(l)))
+      .join("")}</div>`;
+  }
+
+  const now = new Date();
+  const dateLineRegex = /\bdate\b/i;
+  const billNoRegex = /\bbill\s*no\b/i;
+  const dateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  const billNo = order.orderNumber ?? "";
+
+  const processedHeaderLines =
+    headerSection?.lines
+      ?.map((line: string) => {
+        if (dateLineRegex.test(line)) return `Date: ${dateStr}`;
+        if (billNoRegex.test(line)) return billNo ? `Bill No. : ${billNo}` : "";
+        return line;
+      })
+      .filter((l: string) => l !== "") ?? ["Invoice"];
+
+  const headerHtml = sectionAlign("header", headerSection?.alignment ?? "center", processedHeaderLines);
+  const footerHtml = footerSection
+    ? sectionAlign("footer", footerSection.alignment, footerSection.lines)
+    : "";
+
+  const tableHtml = `
+    <div class="section table">
+      <table>
+        <thead>
+          <tr>
+            <th style="text-align:left">Item</th>
+            <th style="text-align:right">Qty</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items
+            .map(
+              (it) => `<tr>
+                <td style="text-align:left">${escapeHtml(it.name)}</td>
+                <td style="text-align:right">${it.quantity}</td>
+              </tr>`
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>`;
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Invoice</title>
+    <style>
+      :root { color-scheme: light; }
+      body { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; margin: 0; padding: 18px; color: #111; display:flex; justify-content:center; }
+      .wrap { width: 80mm; margin: 0 auto; }
+      .line { white-space: pre-wrap; }
+      .line.rule { border-top: 1px dashed #bbb; margin: 6px 0; height: 0; }
+      .small { font-size: 11px; }
+      .big { font-size: 14px; font-weight: 700; }
+      .section { margin: 10px 0; }
+      table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      th { font-size: 11px; color: #555; border-bottom: 1px solid #eee; padding-bottom: 6px; }
+      td { padding: 6px 0; border-bottom: 1px solid #f2f2f2; vertical-align: top; }
+      @media print { body { padding: 0; display:flex; justify-content:center; } .wrap { margin: 0 auto !important; } }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      ${headerHtml}
+      ${tableHtml}
+      ${footerHtml}
+    </div>
+    <script>window.addEventListener('load',function(){try{window.focus();window.print();}catch(_){} setTimeout(()=>window.close(), 300);});</script>
+  </body>
+</html>`;
+}
+
 /* ──────── Timer component ──────── */
 
 function ElapsedTimer({ createdAt }: { createdAt: string }) {
@@ -128,12 +259,14 @@ function OrderCard({
   order,
   statusKey,
   onAdvance,
-  updating
+  updating,
+  onPrintInvoice
 }: {
   order: KDSOrder;
   statusKey: keyof typeof STATUS_CONFIG;
   onAdvance: (id: string, nextStatus: string) => void;
   updating: string | null;
+  onPrintInvoice: (order: KDSOrder) => void | Promise<void>;
 }) {
   const config = STATUS_CONFIG[statusKey];
   const isUpdating = updating === order.id;
@@ -197,8 +330,15 @@ function OrderCard({
         </div>
       )}
 
-      {/* Action Button */}
-      <div className="px-4 pb-4">
+      {/* Action Buttons */}
+      <div className="px-4 pb-4 space-y-2">
+        <button
+          onClick={() => void onPrintInvoice(order)}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/5 px-4 py-2.5 text-xs font-bold text-white transition-all hover:bg-white/10"
+        >
+          <ReceiptText className="h-4 w-4" />
+          Invoice 
+        </button>
         <button
           onClick={() => onAdvance(order.id, config.nextStatus)}
           disabled={isUpdating}
@@ -225,12 +365,14 @@ function StatusColumn({
   statusKey,
   orders,
   onAdvance,
-  updating
+  updating,
+  onPrintInvoice
 }: {
   statusKey: keyof typeof STATUS_CONFIG;
   orders: KDSOrder[];
   onAdvance: (id: string, nextStatus: string) => void;
   updating: string | null;
+  onPrintInvoice: (order: KDSOrder) => void | Promise<void>;
 }) {
   const config = STATUS_CONFIG[statusKey];
   const Icon = config.icon;
@@ -266,6 +408,7 @@ function StatusColumn({
               statusKey={statusKey}
               onAdvance={onAdvance}
               updating={updating}
+              onPrintInvoice={onPrintInvoice}
             />
           ))
         )}
@@ -284,6 +427,97 @@ export default function KDSPage() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [lastOrderCount, setLastOrderCount] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const printKitchenInvoice = async (order: KDSOrder) => {
+    // Open print window immediately from user click to avoid popup/blank-tab issues.
+   
+    const now = new Date();
+    const safeItems = Array.isArray(order.items) ? order.items : [];
+    const rows = safeItems
+      .map(
+        (item) => `
+          <tr>
+            <td style="padding:8px 0;border-bottom:1px solid #f2f2f2">${item.name}</td>
+            <td style="padding:8px 0;border-bottom:1px solid #f2f2f2;text-align:right">${item.quantity}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    let html = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kitchen Invoice</title>
+    <style>
+      body{font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:18px;color:#111;display:flex;justify-content:center}
+      .wrap{width:80mm;margin:0 auto}
+      h1{font-size:16px;margin:0 0 2px}
+      .muted{font-size:12px;color:#555}
+      .meta{display:flex;justify-content:space-between;margin-top:10px;font-size:12px}
+      .divider{border-top:1px dashed #bbb;margin:10px 0}
+      table{width:100%;border-collapse:collapse;font-size:12px}
+      th{padding:6px 0;border-bottom:1px solid #eee;text-align:left;font-size:11px;color:#555}
+      th:last-child{text-align:right}
+      .footer{margin-top:12px;text-align:center;color:#666;font-size:11px}
+      @media print{body{padding:0;display:flex;justify-content:center}.wrap{margin:0 auto}}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Invoice</h1>
+      <div class="muted">${order.orderNumber}</div>
+      <div class="meta">
+        <div>Token: #${order.tokenNumber || "-"}</div>
+        <div>${order.type === "takeaway" ? "Takeaway" : `Table ${order.tableNo || "-"}`}</div>
+      </div>
+      <div class="meta">
+        <div>${now.toLocaleDateString("en-IN")}</div>
+        <div>${now.toLocaleTimeString("en-IN")}</div>
+      </div>
+      <div class="divider"></div>
+      <table>
+        <thead><tr><th>Item</th><th>Qty</th></tr></thead>
+        <tbody>${rows || '<tr><td style="padding:8px 0;color:#666">No items</td><td></td></tr>'}</tbody>
+      </table>
+      <div class="footer">Items only copy</div>
+    </div>
+    <script>window.addEventListener('load',function(){try{window.focus();window.print();}catch(_){} setTimeout(()=>window.close(), 300);});</script>
+  </body>
+</html>`;
+
+    try {
+      const template = await fetchRestaurantReceiptTemplate();
+      if (template?.layout) {
+        html = renderKdsItemsOnlyFromClone({ layout: template.layout, order });
+      }
+    } catch {
+      // fallback to the basic items-only print HTML
+    }
+
+   
+
+    // Popup blocked fallback: print through hidden iframe.
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      iframe.remove();
+      return;
+    }
+    doc.open();
+    doc.write(html);
+    doc.close();
+    setTimeout(() => iframe.remove(), 1200);
+  };
 
   // Fetch orders
   const fetchOrders = useCallback(async () => {
@@ -446,18 +680,21 @@ export default function KDSPage() {
               orders={data.placed}
               onAdvance={handleAdvance}
               updating={updating}
+              onPrintInvoice={printKitchenInvoice}
             />
             <StatusColumn
               statusKey="preparing"
               orders={data.preparing}
               onAdvance={handleAdvance}
               updating={updating}
+              onPrintInvoice={printKitchenInvoice}
             />
             <StatusColumn
               statusKey="ready"
               orders={data.ready}
               onAdvance={handleAdvance}
               updating={updating}
+              onPrintInvoice={printKitchenInvoice}
             />
           </>
         ) : (

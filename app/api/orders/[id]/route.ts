@@ -16,6 +16,27 @@ const orderUpdateSchema = z.object({
       name: z.string().max(80).optional(),
       phone: z.string().max(30).optional()
     })
+    .optional(),
+  items: z
+    .array(
+      z.object({
+        menuItemId: z.string().min(1),
+        nameSnapshot: z.string().min(1),
+        priceSnapshot: z.number().min(0),
+        quantity: z.number().int().min(1),
+        notes: z.string().optional(),
+        lineTotal: z.number().min(0)
+      })
+    )
+    .optional(),
+  pricing: z
+    .object({
+      subtotal: z.number().min(0),
+      tax: z.number().min(0),
+      serviceCharge: z.number().min(0),
+      discount: z.number().min(0),
+      grandTotal: z.number().min(0)
+    })
     .optional()
 });
 

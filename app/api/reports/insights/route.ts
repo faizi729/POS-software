@@ -5,7 +5,7 @@ import { getSmartInsights } from "@/server/queries/reports";
 
 export async function GET(request: NextRequest) {
   try {
-    return withAuth<any>(["owner", "manager"], async (_req, _ctx, session) => {
+    return withAuth<any>(["owner", "manager", "cashier", "staff"], async (_req, _ctx, session) => {
       const data = await getSmartInsights({ restaurantId: session.restaurantId });
       return ok(data);
     })(request, {} as any);

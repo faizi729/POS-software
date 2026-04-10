@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
 
     const year = sp.get("year") ? Number(sp.get("year")) : undefined;
 
-    return withAuth<any>(["owner", "manager"], async (_req, _ctx, session) => {
+    return withAuth<any>(["owner", "manager", "cashier", "staff"], async (_req, _ctx, session) => {
       const report = await getTaxReport({
         restaurantId: session.restaurantId,
         year

@@ -19,3 +19,4 @@ export * from "./PlatformUser";
 export * from "./AuditLog";
 export * from "./WaSession";
 export * from "./ReceiptTemplate";
+export * from "./Table";

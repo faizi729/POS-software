@@ -6,12 +6,13 @@ import { getHeatmapData } from "@/server/queries/reports";
 export async function GET(request: NextRequest) {
   try {
     const sp = request.nextUrl.searchParams;
-    const days = sp.get("days") ? Number(sp.get("days")) : 7;
+    const parsedDays = sp.get("days") ? Number(sp.get("days")) : 7;
+    const safeDays = Number.isFinite(parsedDays) ? Math.min(Math.max(parsedDays, 1), 30) : 7;
 
-    return withAuth<any>(["owner", "manager"], async (_req, _ctx, session) => {
+    return withAuth<any>(["owner", "manager", "cashier", "staff"], async (_req, _ctx, session) => {
       const data = await getHeatmapData({
         restaurantId: session.restaurantId,
-        days: Math.min(Math.max(days, 1), 30) // clamp 1-30
+        days: safeDays
       });
       return ok(data);
     })(request, {} as any);

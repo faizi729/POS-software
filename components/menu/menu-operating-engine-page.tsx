@@ -111,6 +111,7 @@ export function MenuOperatingEnginePage({ categories, items, builder }: { catego
   const [editPrice, setEditPrice] = useState("");
   const [editCategoryId, setEditCategoryId] = useState("");
   const [editIsAvailable, setEditIsAvailable] = useState(true);
+  const [editVariants, setEditVariants] = useState<VariantDraft[]>([]);
 
   useEffect(() => setWorkspace(builder), [builder]);
 
@@ -262,6 +263,7 @@ export function MenuOperatingEnginePage({ categories, items, builder }: { catego
         await reloadWorkspace({ nextMenuId: selectedMenu.id, nextCategoryId: nodeType === "category" ? result.data.id : selectedCategory?.id, nextSubcategoryId: nodeType === "subcategory" ? result.data.id : "" });
         setStructureMessage(nodeType === "category" ? `Category "${result.data.name}" created.` : `Subcategory "${result.data.name}" created.`);
         setNodeName("");
+        setNodeType("category");
         setStep(3);
         startTransition(() => router.refresh());
         return;
@@ -311,12 +313,42 @@ export function MenuOperatingEnginePage({ categories, items, builder }: { catego
     startTransition(() => router.refresh());
   }
 
-  function openEditItem(item: MenuItem) {
+  async function openEditItem(item: MenuItem) {
     setEditCatalogItem(item);
     setEditName(item.name);
     setEditPrice(String(item.price ?? ""));
     setEditCategoryId(item.categoryId);
     setEditIsAvailable(Boolean(item.isAvailable));
+    try {
+      const res = await fetch(`/api/menu/items/${item.id}/variants`, { cache: "no-store" });
+      const payload = (await res.json()) as {
+        success: boolean;
+        data?: Array<{
+          id: string;
+          groupName: string;
+          optionName: string;
+          variantType: "size" | "quantity" | "custom";
+          absolutePrice?: number;
+          priceDelta: number;
+        }>;
+      };
+      if (!res.ok || !payload.success) {
+        setEditVariants([]);
+        return;
+      }
+      const drafts = (payload.data ?? []).map((variant) => ({
+        id: variant.id,
+        groupName: variant.groupName,
+        optionName: variant.optionName,
+        variantType: variant.variantType,
+        priceDelta: String(
+          typeof variant.absolutePrice === "number" ? variant.absolutePrice : variant.priceDelta ?? 0
+        )
+      }));
+      setEditVariants(drafts);
+    } catch {
+      setEditVariants([]);
+    }
   }
 
   async function saveEditedItem() {
@@ -336,17 +368,61 @@ export function MenuOperatingEnginePage({ categories, items, builder }: { catego
       isActive: editCatalogItem.isActive ?? true,
       tags: editCatalogItem.tags ?? [],
       sortOrder: editCatalogItem.sortOrder ?? 0,
-      pricingMode: editCatalogItem.pricingMode ?? "base"
+      pricingMode: editVariants.length > 0 ? "variant" : "base"
     };
 
-    await fetch(`/api/menu/items/${editCatalogItem.id}`, {
+    const itemRes = await fetch(`/api/menu/items/${editCatalogItem.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
+    if (!itemRes.ok) {
+      return;
+    }
+
+    await fetch(`/api/menu/items/${editCatalogItem.id}/variants`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        variants: editVariants
+          .filter((variant) => variant.groupName.trim() && variant.optionName.trim())
+          .map((variant, index) => ({
+            groupName: variant.groupName.trim(),
+            optionName: variant.optionName.trim(),
+            variantType: variant.variantType,
+            absolutePrice: Number(variant.priceDelta || 0),
+            priceDelta: 0,
+            sortOrder: index + 1
+          }))
+      })
+    });
 
     setEditCatalogItem(null);
+    setEditVariants([]);
     startTransition(() => router.refresh());
+  }
+
+  function addEditVariantRow() {
+    setEditVariants((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        groupName: "",
+        optionName: "",
+        variantType: "custom",
+        priceDelta: ""
+      }
+    ]);
+  }
+
+  function updateEditVariantRow(id: string, field: keyof VariantDraft, value: string) {
+    setEditVariants((current) =>
+      current.map((variant) => (variant.id === id ? { ...variant, [field]: value } : variant))
+    );
+  }
+
+  function removeEditVariantRow(id: string) {
+    setEditVariants((current) => current.filter((variant) => variant.id !== id));
   }
 
   async function removeMenu(menuId: string) {
@@ -1066,7 +1142,7 @@ export function MenuOperatingEnginePage({ categories, items, builder }: { catego
                           variant="ghost"
                           size="sm"
                           disabled={isPending}
-                          onClick={() => openEditItem(item)}
+                          onClick={() => void openEditItem(item)}
                         >
                           Edit
                         </Button>
@@ -1097,6 +1173,7 @@ export function MenuOperatingEnginePage({ categories, items, builder }: { catego
       title="Edit menu item"
       description="Update name, price, category, and availability."
       onClose={() => setEditCatalogItem(null)}
+      className="max-w-5xl"
       footer={
         <>
           <Button variant="secondary" onClick={() => setEditCatalogItem(null)}>
@@ -1108,7 +1185,7 @@ export function MenuOperatingEnginePage({ categories, items, builder }: { catego
         </>
       }
     >
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-5 md:grid-cols-2">
         <div className="space-y-2 md:col-span-2">
           <p className="label-text">Item name</p>
           <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Item name" />
@@ -1141,6 +1218,54 @@ export function MenuOperatingEnginePage({ categories, items, builder }: { catego
             <option value="live">Live</option>
             <option value="paused">Paused</option>
           </select>
+        </div>
+
+        <div className="space-y-3 md:col-span-2">
+          <div className="flex items-center justify-between">
+            <p className="label-text">Variants (for existing item)</p>
+            <Button variant="secondary" onClick={addEditVariantRow}>
+              Add variant
+            </Button>
+          </div>
+          <div className="space-y-3 rounded-2xl border border-border-subtle bg-bg-surface p-4">
+            {editVariants.length === 0 ? (
+              <p className="text-sm text-text-secondary">No variants. Base price will be used.</p>
+            ) : null}
+            {editVariants.map((variant) => (
+              <div key={variant.id} className="grid gap-3 rounded-xl border border-border-subtle bg-white p-3 md:grid-cols-5">
+                <Input
+                  className="h-11"
+                  placeholder="Group"
+                  value={variant.groupName}
+                  onChange={(e) => updateEditVariantRow(variant.id, "groupName", e.target.value)}
+                />
+                <Input
+                  className="h-11"
+                  placeholder="Option"
+                  value={variant.optionName}
+                  onChange={(e) => updateEditVariantRow(variant.id, "optionName", e.target.value)}
+                />
+                <select
+                  className="h-11 w-full rounded-xl border border-border-subtle bg-white px-3 text-sm text-text-primary outline-none"
+                  value={variant.variantType}
+                  onChange={(e) => updateEditVariantRow(variant.id, "variantType", e.target.value)}
+                >
+                  <option value="size">Size</option>
+                  <option value="quantity">Quantity</option>
+                  <option value="custom">Custom</option>
+                </select>
+                <Input
+                  className="h-11"
+                  placeholder="Variant price"
+                  value={variant.priceDelta}
+                  onChange={(e) => updateEditVariantRow(variant.id, "priceDelta", e.target.value)}
+                />
+                <Button variant="ghost" onClick={() => removeEditVariantRow(variant.id)}>
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
       </Modal>

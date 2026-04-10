@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { TablePickerModal, type PosTable } from "@/components/pos/TablePickerModal";
+import { TableStatusBar } from "@/components/pos/TableStatusBar";
 import { formatCurrency } from "@/lib/utils/format";
 import { useOrderStore } from "@/store/order-store";
 import { AnimatedNumber } from "@/components/utils/animated-number";
@@ -86,6 +88,7 @@ type RecentOrder = {
   type?: string;
   customer?: { name?: string; phone?: string };
   items?: Array<{
+    menuItemId?: string;
     nameSnapshot: string;
     priceSnapshot: number;
     quantity: number;
@@ -101,6 +104,8 @@ type RecentOrder = {
   };
   createdAt?: string;
 };
+
+const BASE_VARIANT_SENTINEL = "__base__";
 
 function escapeHtml(value: string) {
   return value
@@ -533,14 +538,18 @@ async function printInvoice(order: RecentOrder, restaurantName: string, gstin?: 
   } catch {
     html = buildInvoiceHtml({ restaurantName, gstin, order });
   }
+
+  const autoPrintScript =
+    "<script>window.addEventListener('load',function(){try{window.focus();window.print();}catch(_){} setTimeout(()=>window.close(), 300);});</script>";
+  const htmlWithoutExistingAutoPrint = html.replace(
+    /<script>\s*window\.addEventListener\(['"]load['"],function\(\)\{try\{window\.focus\(\);window\.print\(\);\}catch\(_\)\{\}\s*setTimeout\(\(\)=>window\.close\(\),\s*300\);\}\);\s*<\/script>/gi,
+    ""
+  );
+  const autoPrintHtml = htmlWithoutExistingAutoPrint.replace("</body>", `${autoPrintScript}</body>`);
+
   const w = window.open("", "_blank", "noopener,width=760,height=900");
   if (w) {
     w.document.open();
-    // Inject auto-print on load
-    const autoPrintHtml = html.replace(
-      "</body>",
-      `<script>window.addEventListener('load',function(){try{window.focus();window.print();}catch(_){} setTimeout(()=>window.close(), 300);});</script></body>`
-    );
     w.document.write(autoPrintHtml);
     w.document.close();
     return;
@@ -559,10 +568,6 @@ async function printInvoice(order: RecentOrder, restaurantName: string, gstin?: 
     iframe.remove();
     return;
   }
-  const autoPrintHtml = html.replace(
-    "</body>",
-    `<script>window.addEventListener('load',function(){try{window.focus();window.print();}catch(_){} setTimeout(()=>window.close(), 300);});</script></body>`
-  );
   doc.open();
   doc.write(autoPrintHtml);
   doc.close();
@@ -606,7 +611,9 @@ export function OrderScreenLive({
   const searchRef = useRef<HTMLInputElement | null>(null);
   const [itemsPageSize, setItemsPageSize] = useState<10 | 20 | 50>(10);
   const [itemsPage, setItemsPage] = useState(1);
-  const [tableNo, setTableNo] = useState("04");
+  const [tableNo, setTableNo] = useState("");
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+  const [tablePickerOpen, setTablePickerOpen] = useState(false);
   const [orderType, setOrderType] = useState<"dine_in" | "takeaway">("dine_in");
   const [paymentMethod, setPaymentMethod] = useState("card");
   const [checkoutPaymentStatus, setCheckoutPaymentStatus] = useState<"paid" | "unpaid">("paid");
@@ -614,8 +621,27 @@ export function OrderScreenLive({
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>("all");
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [editingTableNo, setEditingTableNo] = useState("");
+  const [editingOrderType, setEditingOrderType] = useState<"dine_in" | "takeaway">("dine_in");
   const [editingStatus, setEditingStatus] = useState("draft");
   const [editingPaymentStatus, setEditingPaymentStatus] = useState("unpaid");
+  const [editingCustomerName, setEditingCustomerName] = useState("");
+  const [editingCustomerPhone, setEditingCustomerPhone] = useState("");
+  const [editingItems, setEditingItems] = useState<
+    Array<{
+      menuItemId: string;
+      nameSnapshot: string;
+      priceSnapshot: number;
+      quantity: number;
+      notes?: string;
+      lineTotal: number;
+    }>
+  >([]);
+  const [editingPricingBase, setEditingPricingBase] = useState({
+    tax: 0,
+    serviceCharge: 0,
+    discount: 0
+  });
+  const ordersFetchInFlightRef = useRef(false);
   // Defer "now" to client after mount to avoid SSR hydration mismatch
   useEffect(() => {
     setNowTs(Date.now());
@@ -670,6 +696,9 @@ export function OrderScreenLive({
   useEffect(() => {
     let cancelled = false;
     async function fetchOrders() {
+      if (ordersFetchInFlightRef.current) return;
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      ordersFetchInFlightRef.current = true;
       try {
         const res = await fetch("/api/orders", { cache: "no-store" });
         if (!res.ok) return;
@@ -679,16 +708,25 @@ export function OrderScreenLive({
         }
       } catch {
         // ignore transient errors
+      } finally {
+        ordersFetchInFlightRef.current = false;
       }
     }
     fetchOrders();
-    const interval = setInterval(fetchOrders, 3000);
+    const interval = setInterval(fetchOrders, 10000);
     const onFocus = () => fetchOrders();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void fetchOrders();
+      }
+    };
     window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       cancelled = true;
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, []);
 
@@ -817,7 +855,7 @@ export function OrderScreenLive({
       variants.find((entry) => entry.isDefault) ?? variants.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))[0];
 
     setVariantTargetItem(item);
-    setSelectedVariantId(defaultVariant?.id ?? variants[0]?.id ?? "");
+    setSelectedVariantId(defaultVariant?.id ?? BASE_VARIANT_SENTINEL);
     setVariantModalOpen(true);
   }
 
@@ -826,8 +864,13 @@ export function OrderScreenLive({
       setVariantModalOpen(false);
       return;
     }
-    const variant = variantTargetItem.variants?.find((entry) => entry.id === selectedVariantId);
-    const effectivePrice = getEffectivePrice(variantTargetItem, selectedVariantId);
+    const isBaseSelection = selectedVariantId === BASE_VARIANT_SENTINEL;
+    const variant = isBaseSelection
+      ? undefined
+      : variantTargetItem.variants?.find((entry) => entry.id === selectedVariantId);
+    const effectivePrice = isBaseSelection
+      ? variantTargetItem.price
+      : getEffectivePrice(variantTargetItem, selectedVariantId);
     const displayName = variant ? `${variantTargetItem.name} (${variant.optionName})` : variantTargetItem.name;
     const notes = variant ? `Variant: ${variant.groupName} - ${variant.optionName}` : "";
     const key = variant ? `${variantTargetItem.id}::${variant.id}` : variantTargetItem.id;
@@ -976,6 +1019,10 @@ export function OrderScreenLive({
     if (!items.length) {
       return;
     }
+    if (orderType === "dine_in" && !selectedTableId) {
+      toast.error("Select a table first", { durationMs: 2400 });
+      return;
+    }
 
     try {
       const orderResponse = await fetch("/api/orders", {
@@ -1019,6 +1066,21 @@ export function OrderScreenLive({
         throw new Error("Order created but submit failed");
       }
 
+      if (orderType === "dine_in" && selectedTableId) {
+        try {
+          await fetch(`/api/tables/${selectedTableId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              status: "occupied",
+              currentOrderId: orderPayload.data.id
+            })
+          });
+        } catch {
+          // non-blocking: do not fail checkout for table status update
+        }
+      }
+
       if (checkoutPaymentStatus === "paid") {
         const payRes = await fetch(`/api/orders/${orderPayload.data.id}/payments`, {
           method: "POST",
@@ -1036,23 +1098,71 @@ export function OrderScreenLive({
         }
       }
 
+      let orderForPrint: RecentOrder | null = null;
+      if (checkoutPaymentStatus === "paid") {
+        try {
+          const orderDetailsRes = await fetch(`/api/orders/${orderPayload.data.id}`, {
+            cache: "no-store"
+          });
+          if (orderDetailsRes.ok) {
+            const detailJson = await orderDetailsRes.json();
+            if (detailJson?.data) {
+              orderForPrint = {
+                ...(detailJson.data as RecentOrder),
+                id: (detailJson.data as RecentOrder).id ?? orderPayload.data.id
+              };
+            }
+          }
+        } catch {
+          // non-blocking; we'll still complete checkout and refresh list
+        }
+      }
+
       toast.success("Order placed", {
         message: checkoutPaymentStatus === "paid" ? "Payment captured" : "Saved as unpaid",
         durationMs: 2600
       });
 
       reset();
+      setSelectedTableId(null);
+      if (orderType === "dine_in") setTableNo("");
       // Refresh list without full route reload
       try {
         const res = await fetch("/api/orders", { cache: "no-store" });
         const json = await res.json();
         if (json?.data?.orders) {
-          setLiveOrders(json.data.orders as RecentOrder[]);
+          const refreshedOrders = json.data.orders as RecentOrder[];
+          setLiveOrders(refreshedOrders);
+          if (checkoutPaymentStatus === "paid") {
+            const createdOrder = refreshedOrders.find((order) => order.id === orderPayload.data.id);
+            await printInvoice(
+              createdOrder ?? orderForPrint ?? refreshedOrders[0],
+              restaurant?.name ?? "Restaurant",
+              restaurant?.settings?.gstin,
+              (restaurant as any)?.id || (restaurant as any)?._id
+            );
+          }
         } else {
           startTransition(() => router.refresh());
+          if (checkoutPaymentStatus === "paid" && orderForPrint) {
+            await printInvoice(
+              orderForPrint,
+              restaurant?.name ?? "Restaurant",
+              restaurant?.settings?.gstin,
+              (restaurant as any)?.id || (restaurant as any)?._id
+            );
+          }
         }
       } catch {
         startTransition(() => router.refresh());
+        if (checkoutPaymentStatus === "paid" && orderForPrint) {
+          await printInvoice(
+            orderForPrint,
+            restaurant?.name ?? "Restaurant",
+            restaurant?.settings?.gstin,
+            (restaurant as any)?.id || (restaurant as any)?._id
+          );
+        }
       }
     } catch (err: any) {
       toast.error("Couldn’t place order", { message: err?.message || "Try again", durationMs: 3400 });
@@ -1060,14 +1170,40 @@ export function OrderScreenLive({
   }
 
   async function saveOrder(orderId: string) {
+    const subtotal = editingItems.reduce((sum, item) => sum + item.priceSnapshot * item.quantity, 0);
+    const tax = editingPricingBase.tax;
+    const serviceCharge = editingPricingBase.serviceCharge;
+    const discount = editingPricingBase.discount;
+    const grandTotal = Math.max(0, subtotal + tax + serviceCharge - discount);
+
     try {
       const res = await fetch(`/api/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tableNo: editingTableNo,
+          type: editingOrderType,
           status: editingStatus,
-          paymentStatus: editingPaymentStatus
+          paymentStatus: editingPaymentStatus,
+          customer: {
+            name: editingCustomerName,
+            phone: editingCustomerPhone
+          },
+          items: editingItems.map((item) => ({
+            menuItemId: item.menuItemId,
+            nameSnapshot: item.nameSnapshot,
+            priceSnapshot: item.priceSnapshot,
+            quantity: item.quantity,
+            notes: item.notes ?? "",
+            lineTotal: item.priceSnapshot * item.quantity
+          })),
+          pricing: {
+            subtotal,
+            tax,
+            serviceCharge,
+            discount,
+            grandTotal
+          }
         })
       });
       if (!res.ok) throw new Error("Update failed");
@@ -1078,8 +1214,13 @@ export function OrderScreenLive({
 
     setEditingOrderId(null);
     setEditingTableNo("");
+    setEditingOrderType("dine_in");
     setEditingStatus("draft");
     setEditingPaymentStatus("unpaid");
+    setEditingCustomerName("");
+    setEditingCustomerPhone("");
+    setEditingItems([]);
+    setEditingPricingBase({ tax: 0, serviceCharge: 0, discount: 0 });
     startTransition(() => router.refresh());
   }
 
@@ -1113,16 +1254,50 @@ export function OrderScreenLive({
     });
   }, [liveOrders, orderStatusFilter, orderSearch]);
 
-  function beginOrderEdit(order: RecentOrder) {
+  async function beginOrderEdit(order: RecentOrder) {
     setEditingOrderId(order.id);
     setEditingTableNo(order.tableNo ?? "");
+    setEditingOrderType((order.type as "dine_in" | "takeaway") ?? "dine_in");
     setEditingStatus(order.status);
     setEditingPaymentStatus(order.paymentStatus);
+    setEditingCustomerName(order.customer?.name ?? "");
+    setEditingCustomerPhone(order.customer?.phone ?? "");
+    try {
+      const res = await fetch(`/api/orders/${order.id}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const payload = (await res.json()) as { data?: RecentOrder };
+      const fresh = payload?.data;
+      if (!fresh) return;
+      setEditingTableNo(fresh.tableNo ?? "");
+      setEditingOrderType((fresh.type as "dine_in" | "takeaway") ?? "dine_in");
+      setEditingStatus(fresh.status);
+      setEditingPaymentStatus(fresh.paymentStatus);
+      setEditingCustomerName(fresh.customer?.name ?? "");
+      setEditingCustomerPhone(fresh.customer?.phone ?? "");
+      setEditingItems(
+        (fresh.items ?? []).map((item) => ({
+          menuItemId: item.menuItemId ?? "unknown",
+          nameSnapshot: item.nameSnapshot,
+          priceSnapshot: item.priceSnapshot,
+          quantity: item.quantity,
+          notes: item.notes,
+          lineTotal: item.lineTotal
+        }))
+      );
+      setEditingPricingBase({
+        tax: fresh.pricing?.tax ?? 0,
+        serviceCharge: fresh.pricing?.serviceCharge ?? 0,
+        discount: fresh.pricing?.discount ?? 0
+      });
+    } catch {
+      // ignore; modal still opens with available data
+    }
   }
 
   return (
     <>
     <div className="space-y-6">
+      <TableStatusBar />
       <div className="grid gap-6 xl:items-start xl:grid-cols-[0.85fr_1.6fr_0.95fr]">
         {/* LEFT: Orders list */}
         <section className="xl:sticky xl:top-6 xl:self-start">
@@ -1217,7 +1392,7 @@ export function OrderScreenLive({
                       <div className="mt-2 flex items-center gap-2 border-t border-border-subtle pt-2">
                         <button
                           type="button"
-                          onClick={() => beginOrderEdit(order)}
+                          onClick={() => void beginOrderEdit(order)}
                           className="cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-semibold text-text-primary hover:bg-gray-100 transition"
                         >
                           Edit
@@ -1374,7 +1549,7 @@ export function OrderScreenLive({
             </CardContent>
           </Card>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-2">
             {visibleItems.map((item) => (
               <button
                 key={item.id}
@@ -1413,16 +1588,16 @@ export function OrderScreenLive({
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <Badge variant="neutral">{item.tags[0] ?? "Menu item"}</Badge>
-                    <h3 className="mt-4 text-[1.25rem] leading-8 tracking-[-0.03em]">{item.name}</h3>
+                    <h3 className="mt-3 text-[1.35rem] leading-8 tracking-[-0.03em] text-text-primary">{item.name}</h3>
                     {item.variants?.length ? (
-                      <p className="mt-2 text-sm text-text-secondary">
-                        {item.variants.length} variants available
+                      <p className="mt-1 text-sm font-medium text-text-secondary">
+                        {item.variants.length} variant{item.variants.length > 1 ? "s" : ""} available
                       </p>
                     ) : null}
                   </div>
                   <div
                     className={[
-                      "rounded-full border px-3 py-1 text-sm font-semibold",
+                      "rounded-full border px-3 py-1 text-sm font-semibold shadow-sm",
                       itemsInCart.has(item.id)
                         ? "border-accent-primary bg-accent-primary/10 text-accent-primary"
                         : "border-border-subtle bg-white text-text-primary"
@@ -1433,12 +1608,18 @@ export function OrderScreenLive({
                 </div>
                 <div
                   className={[
-                    "mt-8 flex items-center justify-between rounded-2xl px-4 py-3",
+                    "mt-7 flex items-center justify-between rounded-2xl border px-4 py-3",
                     itemsInCart.has(item.id) ? "bg-accent-primary/10" : "bg-bg-surface"
                   ].join(" ")}
                 >
-                  <p className={itemsInCart.has(item.id) ? "text-accent-primary font-semibold" : undefined}>
-                    {itemsInCart.has(item.id) ? "Added to cart" : "Tap once to add"}
+                  <p
+                    className={
+                      itemsInCart.has(item.id)
+                        ? "text-accent-primary font-semibold"
+                        : "font-medium text-text-secondary"
+                    }
+                  >
+                    {itemsInCart.has(item.id) ? "In cart" : "Tap once to add"}
                   </p>
                   <span className="text-sm font-semibold text-accent-primary">
                     {itemsInCart.has(item.id) ? "Add more" : "Add item"}
@@ -1468,7 +1649,7 @@ export function OrderScreenLive({
             <CardHeader className="border-b border-border-subtle bg-white">
               <p className="label-text">Order details</p>
               <CardTitle className="mt-2 text-[1.7rem] leading-9 tracking-[-0.04em] text-text-primary">
-                Walk-in | {orderType === "dine_in" ? `Table ${tableNo}` : "Takeaway"}
+                Walk-in | {orderType === "dine_in" ? (tableNo ? `Table ${tableNo}` : "Select Table") : "Takeaway"}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 p-4">
@@ -1476,18 +1657,26 @@ export function OrderScreenLive({
                 <select
                   className="h-11 rounded-2xl border border-border-subtle bg-white px-4 text-sm text-text-primary outline-none"
                   value={orderType}
-                  onChange={(event) => setOrderType(event.target.value as "dine_in" | "takeaway")}
+                  onChange={(event) => {
+                    const nextType = event.target.value as "dine_in" | "takeaway";
+                    setOrderType(nextType);
+                    if (nextType === "takeaway") {
+                      setSelectedTableId(null);
+                      setTableNo("");
+                    }
+                  }}
                 >
                   <option value="dine_in">Dine in</option>
                   <option value="takeaway">Takeaway</option>
                 </select>
                 {orderType === "dine_in" ? (
-                  <Input
-                    className="h-11 rounded-2xl"
-                    value={tableNo}
-                    onChange={(event) => setTableNo(event.target.value)}
-                    placeholder="Table"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setTablePickerOpen(true)}
+                    className="h-11 rounded-2xl border border-border-subtle bg-white px-4 text-left text-sm text-text-primary outline-none transition hover:border-border-strong"
+                  >
+                    {tableNo ? `Table ${tableNo} · Dine In` : "Select Table"}
+                  </button>
                 ) : (
                   <div className="flex h-10 items-center rounded-xl border border-border-subtle bg-bg-surface px-4 text-sm text-text-secondary">
                     No table needed
@@ -1669,7 +1858,7 @@ export function OrderScreenLive({
                   disabled={isPending || items.length === 0}
                   onClick={placeOrderAndPayment}
                 >
-                  {checkoutPaymentStatus === "paid" ? "Charge order" : "Save unpaid order"}
+                  {checkoutPaymentStatus === "paid" ? "Charge & print bill" : "Save unpaid order"}
                 </Button>
               </div>
 
@@ -1722,12 +1911,17 @@ export function OrderScreenLive({
       <Modal
         open={editingOrderId !== null}
         title="Edit order"
-        description={editingOrderId ? `Update status, table, or payment for this order.` : undefined}
+        description={editingOrderId ? `Update items, pricing, and order details.` : undefined}
         onClose={() => {
           setEditingOrderId(null);
           setEditingTableNo("");
+          setEditingOrderType("dine_in");
           setEditingStatus("draft");
           setEditingPaymentStatus("unpaid");
+          setEditingCustomerName("");
+          setEditingCustomerPhone("");
+          setEditingItems([]);
+          setEditingPricingBase({ tax: 0, serviceCharge: 0, discount: 0 });
         }}
         footer={
           <>
@@ -1736,8 +1930,13 @@ export function OrderScreenLive({
               onClick={() => {
                 setEditingOrderId(null);
                 setEditingTableNo("");
+                setEditingOrderType("dine_in");
                 setEditingStatus("draft");
                 setEditingPaymentStatus("unpaid");
+                setEditingCustomerName("");
+                setEditingCustomerPhone("");
+                setEditingItems([]);
+                setEditingPricingBase({ tax: 0, serviceCharge: 0, discount: 0 });
               }}
             >
               Cancel
@@ -1760,6 +1959,49 @@ export function OrderScreenLive({
         }
       >
         <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-text-primary">Order type</label>
+              <select
+                className="h-11 w-full rounded-2xl border border-border-subtle bg-white px-4 text-sm text-text-primary outline-none"
+                value={editingOrderType}
+                onChange={(e) => setEditingOrderType(e.target.value as "dine_in" | "takeaway")}
+              >
+                <option value="dine_in">Dine in</option>
+                <option value="takeaway">Takeaway</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-text-primary mb-1">Table No.</label>
+              <Input
+                className="h-11 rounded-2xl"
+                value={editingTableNo}
+                onChange={(e) => setEditingTableNo(e.target.value)}
+                placeholder="e.g. 04"
+                disabled={editingOrderType !== "dine_in"}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-semibold text-text-primary mb-1">Customer name</label>
+              <Input
+                className="h-11 rounded-2xl"
+                value={editingCustomerName}
+                onChange={(e) => setEditingCustomerName(e.target.value)}
+                placeholder="Walk-in"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-text-primary mb-1">Customer phone</label>
+              <Input
+                className="h-11 rounded-2xl"
+                value={editingCustomerPhone}
+                onChange={(e) => setEditingCustomerPhone(e.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+          </div>
           <div>
             <label className="block text-sm font-semibold text-text-primary mb-1">Status</label>
                           <select
@@ -1776,15 +2018,6 @@ export function OrderScreenLive({
                           </select>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-text-primary mb-1">Table No.</label>
-            <Input
-              className="h-11 rounded-2xl"
-              value={editingTableNo}
-              onChange={(e) => setEditingTableNo(e.target.value)}
-              placeholder="e.g. 04"
-            />
-          </div>
-          <div>
             <label className="block text-sm font-semibold text-text-primary mb-1">Payment status</label>
                           <select
               className="h-11 w-full rounded-2xl border border-border-subtle bg-white px-4 text-sm text-text-primary outline-none"
@@ -1797,8 +2030,163 @@ export function OrderScreenLive({
                             <option value="refunded">Refunded</option>
                           </select>
           </div>
+          <div>
+            <label className="mb-1 block text-sm font-semibold text-text-primary">Items</label>
+            <div className="space-y-2 rounded-2xl border border-border-subtle bg-bg-surface p-3">
+              {editingItems.length === 0 ? (
+                <p className="text-sm text-text-secondary">No items in this order.</p>
+              ) : null}
+              {editingItems.map((item, idx) => (
+                <div key={`${item.menuItemId}-${idx}`} className="rounded-xl border border-border-subtle bg-white p-3">
+                  <div className="grid grid-cols-[1.6fr_0.8fr_0.8fr_auto] gap-2">
+                    <Input
+                      className="h-10 rounded-xl"
+                      value={item.nameSnapshot}
+                      onChange={(e) =>
+                        setEditingItems((prev) =>
+                          prev.map((it, i) => (i === idx ? { ...it, nameSnapshot: e.target.value } : it))
+                        )
+                      }
+                      placeholder="Item name"
+                    />
+                    <Input
+                      className="h-10 rounded-xl"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={item.priceSnapshot}
+                      onChange={(e) =>
+                        setEditingItems((prev) =>
+                          prev.map((it, i) =>
+                            i === idx
+                              ? {
+                                  ...it,
+                                  priceSnapshot: Number(e.target.value || 0),
+                                  lineTotal: Number(e.target.value || 0) * it.quantity
+                                }
+                              : it
+                          )
+                        )
+                      }
+                    />
+                    <Input
+                      className="h-10 rounded-xl"
+                      type="number"
+                      min={1}
+                      step="1"
+                      value={item.quantity}
+                      onChange={(e) =>
+                        setEditingItems((prev) =>
+                          prev.map((it, i) =>
+                            i === idx
+                              ? {
+                                  ...it,
+                                  quantity: Math.max(1, Number(e.target.value || 1)),
+                                  lineTotal: it.priceSnapshot * Math.max(1, Number(e.target.value || 1))
+                                }
+                              : it
+                          )
+                        )
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-10 rounded-xl border-red-200 px-3 text-red-600 hover:border-red-300 hover:bg-red-50"
+                      onClick={() => setEditingItems((prev) => prev.filter((_, i) => i !== idx))}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                  <Input
+                    className="mt-2 h-10 rounded-xl"
+                    value={item.notes ?? ""}
+                    onChange={(e) =>
+                      setEditingItems((prev) =>
+                        prev.map((it, i) => (i === idx ? { ...it, notes: e.target.value } : it))
+                      )
+                    }
+                    placeholder="Notes (optional)"
+                  />
+                </div>
+              ))}
+              <div className="grid grid-cols-2 gap-3 pt-2 text-sm">
+                <Input
+                  className="h-10 rounded-xl bg-white"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={editingPricingBase.tax}
+                  onChange={(e) =>
+                    setEditingPricingBase((prev) => ({ ...prev, tax: Number(e.target.value || 0) }))
+                  }
+                  placeholder="Tax"
+                />
+                <Input
+                  className="h-10 rounded-xl bg-white"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={editingPricingBase.serviceCharge}
+                  onChange={(e) =>
+                    setEditingPricingBase((prev) => ({ ...prev, serviceCharge: Number(e.target.value || 0) }))
+                  }
+                  placeholder="Service charge"
+                />
+                <Input
+                  className="h-10 rounded-xl bg-white"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={editingPricingBase.discount}
+                  onChange={(e) =>
+                    setEditingPricingBase((prev) => ({ ...prev, discount: Number(e.target.value || 0) }))
+                  }
+                  placeholder="Discount"
+                />
+                <div />
+                <div className="rounded-xl border border-border-subtle bg-white px-3 py-2">
+                  Subtotal:{" "}
+                  <span className="font-semibold">
+                    {formatCurrency(
+                      editingItems.reduce((sum, item) => sum + item.priceSnapshot * item.quantity, 0)
+                    )}
+                  </span>
+                </div>
+                <div className="rounded-xl border border-border-subtle bg-white px-3 py-2">
+                  Grand Total:{" "}
+                  <span className="font-semibold">
+                    {formatCurrency(
+                      Math.max(
+                        0,
+                        editingItems.reduce((sum, item) => sum + item.priceSnapshot * item.quantity, 0) +
+                          (editingPricingBase.tax ?? 0) +
+                          (editingPricingBase.serviceCharge ?? 0) -
+                          (editingPricingBase.discount ?? 0)
+                      )
+                    )}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </Modal>
+
+      <TablePickerModal
+        open={tablePickerOpen}
+        onClose={() => setTablePickerOpen(false)}
+        currentTableNo={tableNo}
+        onSelect={(table: PosTable) => {
+          setSelectedTableId(table.id);
+          setTableNo(table.number);
+          setTablePickerOpen(false);
+          toast.success("Table selected", {
+            message: `Table ${table.number}`,
+            durationMs: 1800
+          });
+        }}
+      />
 
       <Modal
       open={variantModalOpen}
@@ -1829,6 +2217,31 @@ export function OrderScreenLive({
     >
       {variantTargetItem?.variants?.length ? (
         <div className="space-y-3">
+          <label
+            className={[
+              "flex cursor-pointer items-center justify-between gap-4 rounded-2xl border px-4 py-3",
+              selectedVariantId === BASE_VARIANT_SENTINEL
+                ? "border-border-strong bg-bg-surface"
+                : "border-border-subtle bg-white hover:bg-bg-surface"
+            ].join(" ")}
+          >
+            <div className="flex items-center gap-3">
+              <input
+                type="radio"
+                name="variant"
+                checked={selectedVariantId === BASE_VARIANT_SENTINEL}
+                onChange={() => setSelectedVariantId(BASE_VARIANT_SENTINEL)}
+              />
+              <div>
+                <p className="font-semibold text-text-primary">Base item</p>
+                <p className="text-sm text-text-secondary">No variant</p>
+              </div>
+            </div>
+            <div className="text-sm font-semibold text-text-primary">
+              {formatCurrency(variantTargetItem.price)}
+            </div>
+          </label>
+
           {variantTargetItem.variants
             .slice()
             .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))

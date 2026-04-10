@@ -240,7 +240,6 @@ export function AppShellClient({
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <Button variant="secondary">Morning shift</Button>
                 <div className="flex h-11 min-w-11 items-center justify-center rounded-full border border-border-subtle bg-bg-surface px-3 text-sm font-semibold text-text-primary">
                   {userName
                     .split(" ")

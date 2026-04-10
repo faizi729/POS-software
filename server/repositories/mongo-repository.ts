@@ -529,7 +529,9 @@ export async function getOrderById(id: string, restaurantId: string) {
 export async function updateOrder(
   id: string,
   restaurantId: string,
-  input: Partial<Pick<OrderInput, "status" | "paymentStatus" | "tableNo" | "type" | "customer">>
+  input: Partial<
+    Pick<OrderInput, "status" | "paymentStatus" | "tableNo" | "type" | "customer" | "items" | "pricing">
+  >
 ) {
   await connectToDatabase();
 
@@ -572,6 +574,21 @@ export async function updateOrder(
       name: input.customer.name ?? order.customer?.name,
       phone: input.customer.phone ?? order.customer?.phone
     };
+  }
+
+  if (input.items) {
+    order.items = input.items.map((item) => ({
+      menuItemId: toId(item.menuItemId),
+      nameSnapshot: item.nameSnapshot,
+      priceSnapshot: item.priceSnapshot,
+      quantity: item.quantity,
+      notes: item.notes,
+      lineTotal: item.lineTotal
+    })) as any;
+  }
+
+  if (input.pricing) {
+    order.pricing = input.pricing as any;
   }
 
   await order.save();

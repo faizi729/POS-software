@@ -9,7 +9,10 @@ function oid(id: string) {
 }
 
 function dayKey(d: Date) {
-  return d.toISOString().split("T")[0]; // "2026-04-03"
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`; // "2026-04-03" (local day)
 }
 
 function monthKey(d: Date) {

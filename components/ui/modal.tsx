@@ -28,7 +28,7 @@ export function Modal({
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -42,7 +42,7 @@ export function Modal({
             role="dialog"
             aria-modal="true"
             className={cn(
-              "relative w-full max-w-2xl overflow-hidden rounded-[20px] border border-border-subtle bg-bg-elevated shadow-[0_24px_80px_rgba(28,26,23,0.18)]",
+              "relative flex w-full max-w-2xl max-h-[90vh] flex-col overflow-hidden rounded-[20px] border border-border-subtle bg-bg-elevated shadow-[0_24px_80px_rgba(28,26,23,0.18)]",
               className
             )}
             initial={{ opacity: 0, y: 14, scale: 0.985 }}
@@ -59,7 +59,7 @@ export function Modal({
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            <div className="px-6 py-5">{children}</div>
+            <div className="min-h-0 overflow-y-auto px-6 py-5">{children}</div>
             {footer ? (
               <div className="flex items-center justify-end gap-3 border-t border-border-subtle bg-bg-surface px-6 py-4">
                 {footer}
