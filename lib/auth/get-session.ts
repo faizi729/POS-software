@@ -25,6 +25,11 @@ export async function getSession(): Promise<AppSession> {
     // fall through to seed for local/demo
   }
 
+  // CRITICAL: never allow auth bypass in production
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Unauthorized");
+  }
+
   const { ensureSeedData } = await import("@/server/bootstrap/seed");
   const { userId, restaurantId } = await ensureSeedData();
 

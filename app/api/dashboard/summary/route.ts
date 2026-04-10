@@ -1,10 +1,11 @@
+import { NextRequest } from "next/server";
 import { ok } from "@/lib/api/response";
-import { getSession } from "@/lib/auth/get-session";
+import { withAuth } from "@/lib/auth/with-auth";
 import { getDashboardData } from "@/server/queries/dashboard";
 
-export async function GET() {
-  const session = await getSession();
-  const summary = await getDashboardData(session.restaurantId);
-
-  return ok(summary);
+export async function GET(request: NextRequest) {
+  return withAuth<any>(["owner", "manager", "cashier"], async (_req, _ctx, session) => {
+    const summary = await getDashboardData(session.restaurantId);
+    return ok(summary);
+  })(request, {} as any);
 }

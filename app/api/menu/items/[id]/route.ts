@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 
 import { ok, handleRouteError } from "@/lib/api/response";
-import { getSession } from "@/lib/auth/get-session";
+import { withAuth } from "@/lib/auth/with-auth";
 import { menuItemSchema } from "@/lib/validators/menu";
 import { slugify } from "@/lib/utils/slugify";
 import { deleteMenuItem, updateMenuItem } from "@/server/repositories/mongo-repository";
@@ -13,32 +13,30 @@ type RouteContext = {
 };
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  try {
-    const session = await getSession();
+  return withAuth<RouteContext>(["owner", "manager"], async (request, context, session) => {
     const { id } = await context.params;
     const body = await request.json();
+
     const payload = menuItemSchema.parse({
       ...body,
       restaurantId: session.restaurantId,
       slug: body.slug || slugify(body.name)
     });
 
-    const item = await updateMenuItem(id, payload);
+    if (payload.sku == null || payload.sku === "") {
+      // @ts-ignore
+      delete (payload as any).sku;
+    }
 
+    const item = await updateMenuItem(id, payload);
     return ok(item);
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  })(request, context);
 }
 
-export async function DELETE(_: NextRequest, context: RouteContext) {
-  try {
-    const session = await getSession();
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  return withAuth<RouteContext>(["owner", "manager"], async (_req, context, session) => {
     const { id } = await context.params;
     const result = await deleteMenuItem(id, session.restaurantId);
-
     return ok(result);
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  })(request, context);
 }

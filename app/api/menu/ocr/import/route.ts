@@ -2,10 +2,13 @@ import { NextRequest } from "next/server";
 import crypto from "crypto";
 
 import { ok, handleRouteError } from "@/lib/api/response";
-import { getSession } from "@/lib/auth/get-session";
+import { assertRole, requireSession } from "@/lib/auth/guards";
 import { slugify } from "@/lib/utils/slugify";
 import { type ImportedMenu } from "@/lib/ocr/menu-import-parser";
 import { extractMenuHybrid } from "@/lib/ocr/menu-extraction-engine";
+import { validateUploads } from "@/lib/middleware/upload-validate";
+import { fail } from "@/lib/api/response";
+import { getClientIp, rateLimit } from "@/lib/middleware/rate-limit";
 import {
   createAdvancedMenuItem,
   createMenuDefinition,
@@ -97,7 +100,18 @@ async function generateUniqueSku(params: { restaurantId: string; categoryName: s
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession();
+    const session = await requireSession();
+    assertRole(session, ["owner", "manager"]);
+
+    const rl = await rateLimit({
+      request,
+      keyParts: ["ocr-menu-single", session.restaurantId, getClientIp(request)],
+      limit: 30,
+      windowMs: 60_000,
+      onHit: () => console.warn("[rate-limit] /api/menu/ocr/import")
+    });
+    if (!rl.ok) return fail("Too many requests. Try again soon.", 429);
+
     const apiKey = process.env.OCR_SPACE_API_KEY;
     const openRouterKey = process.env.OPENROUTER_API_KEY;
     const openRouterModel =
@@ -121,6 +135,9 @@ export async function POST(request: NextRequest) {
     if (!file || !(file instanceof File)) {
       return ok({ error: "Missing image file (field name: image)." }, { status: 400 });
     }
+
+    const valid = validateUploads({ files: [file], maxFiles: 1, maxBytesPerFile: 5 * 1024 * 1024 });
+    if (!valid.ok) return fail(valid.error, 400);
 
     const ocr = await callOcrSpace({ apiKey, file });
     console.log("[menu/ocr/import] OCR TEXT BEFORE PARSE\n", ocr.text);

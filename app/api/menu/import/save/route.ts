@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { ok, handleRouteError } from "@/lib/api/response";
 import { connectToDatabase } from "@/lib/db/connect";
-import { getSession } from "@/lib/auth/get-session";
+import { requireSession } from "@/lib/auth/guards";
 import { MenuCategory, MenuItem, Restaurant } from "@/models";
 
 type SavePayload = {
@@ -22,14 +22,16 @@ function slugify(value: string) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession();
+    const session = await requireSession();
     await connectToDatabase();
 
-    const body = (await request.json()) as SavePayload;
+    const body = (await request.json()) as SavePayload & { restaurantId?: string };
     const { categories } = body || {};
     if (!Array.isArray(categories) || !categories.length) {
       return ok({ error: "No categories to save" }, { status: 400 });
     }
+    // Tenant safety: never accept restaurantId from client
+    const restaurantId = session.restaurantId;
 
     const created: Array<{ categoryId: string; subcategoryId: string; items: number }> = [];
 
@@ -40,13 +42,13 @@ export async function POST(request: NextRequest) {
 
       const category = await MenuCategory.findOneAndUpdate(
         {
-          restaurantId: session.restaurantId,
+          restaurantId,
           parentId: null,
           name: categoryName
         },
         {
           $setOnInsert: {
-            restaurantId: session.restaurantId,
+            restaurantId,
             parentId: null,
             name: categoryName,
             slug: slugify(categoryName),
@@ -59,13 +61,13 @@ export async function POST(request: NextRequest) {
 
       const subcategory = await MenuCategory.findOneAndUpdate(
         {
-          restaurantId: session.restaurantId,
+          restaurantId,
           parentId: category._id,
           name: subName
         },
         {
           $setOnInsert: {
-            restaurantId: session.restaurantId,
+            restaurantId,
             parentId: category._id,
             name: subName,
             slug: slugify(subName),
@@ -83,19 +85,18 @@ export async function POST(request: NextRequest) {
         if (!name || !(price >= 1)) continue;
         await MenuItem.findOneAndUpdate(
           {
-            restaurantId: session.restaurantId,
+            restaurantId,
             categoryId: category._id,
             subcategoryId: subcategory._id,
             name
           },
           {
             $setOnInsert: {
-              restaurantId: session.restaurantId,
+              restaurantId,
               categoryId: category._id,
               subcategoryId: subcategory._id,
               name,
               slug: slugify(name),
-              price,
               pricingMode: "base",
               itemType: "standard",
               isAvailable: true
@@ -115,7 +116,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Mark onboarding progress
-    await Restaurant.findByIdAndUpdate(session.restaurantId, {
+    await Restaurant.findByIdAndUpdate(restaurantId, {
       $set: { "onboarding.menuImported": true },
       $currentDate: {
         "onboarding.completedAt": {

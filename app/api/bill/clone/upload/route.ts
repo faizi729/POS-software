@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 
 import { ok } from "@/lib/api/response";
 import { cloneReceiptFromOcr } from "@/lib/ocr/receipt-clone-engine";
+import { validateUploads } from "@/lib/middleware/upload-validate";
+import { fail } from "@/lib/api/response";
+import { getClientIp, rateLimit } from "@/lib/middleware/rate-limit";
+import { assertRole, requireSession } from "@/lib/auth/guards";
 
 async function callOcrSpace(params: { apiKey: string; file: File }) {
   const form = new FormData();
@@ -126,6 +130,18 @@ function escapeHtml(value: string) {
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await requireSession();
+    assertRole(session, ["owner", "manager", "cashier"]);
+
+    const rl = await rateLimit({
+      request,
+      keyParts: ["ocr-receipt-clone", session.restaurantId, getClientIp(request)],
+      limit: 30,
+      windowMs: 60_000,
+      onHit: () => console.warn("[rate-limit] /api/bill/clone/upload")
+    });
+    if (!rl.ok) return fail("Too many requests. Try again soon.", 429);
+
     const apiKey = process.env.OCR_SPACE_API_KEY;
     if (!apiKey) {
       return ok(
@@ -143,8 +159,10 @@ export async function POST(request: NextRequest) {
       return ok({ error: "Missing file (field name: file)." }, { status: 400 });
     }
 
+    const valid = validateUploads({ files: [file], maxFiles: 1, maxBytesPerFile: 5 * 1024 * 1024 });
+    if (!valid.ok) return fail(valid.error, 400);
+
     const ocr = await callOcrSpace({ apiKey, file });
-    console.log("[bill/clone/upload] OCR TEXT\n", ocr.text);
 
     const result = cloneReceiptFromOcr({ rawText: ocr.text, currency: "INR" });
     const demoHtml = renderReceiptLayoutToHtml({

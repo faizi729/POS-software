@@ -21,6 +21,7 @@ const paymentSchema = new Schema(
 paymentSchema.index({ restaurantId: 1, orderId: 1 });
 paymentSchema.index({ restaurantId: 1, paidAt: -1 });
 paymentSchema.index({ restaurantId: 1, method: 1, paidAt: -1 });
+paymentSchema.index({ restaurantId: 1, status: 1, paidAt: -1 });
 
 export type PaymentDocument = InferSchemaType<typeof paymentSchema>;
 export const Payment: Model<PaymentDocument> =

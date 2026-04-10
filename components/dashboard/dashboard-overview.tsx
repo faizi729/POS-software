@@ -1,6 +1,15 @@
 "use client";
 
 import { ArrowRight, ArrowUpRight, Clock, CreditCard, Hash, ShoppingBag, Wallet } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis
+} from "recharts";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,9 +44,45 @@ type DashboardOverviewProps = {
   }[];
   lastToken: number;
   hourlySales: number[];
+  openingTime: string;
+  closingTime: string;
   allTimeRevenue: number;
   totalOrders: number;
 };
+
+function parseHHmm(value: string, fallback: { hh: number; mm: number }) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(value || "").trim());
+  if (!m) return fallback;
+  const hh = Math.max(0, Math.min(23, Number(m[1] ?? fallback.hh)));
+  const mm = Math.max(0, Math.min(59, Number(m[2] ?? fallback.mm)));
+  return { hh, mm };
+}
+
+function formatHourLabel(hour: number) {
+  const h = ((hour % 24) + 24) % 24;
+  const isPm = h >= 12;
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}${isPm ? "p" : "a"}`;
+}
+
+function buildBusinessHours(openingTime: string, closingTime: string) {
+  const open = parseHHmm(openingTime, { hh: 9, mm: 0 });
+  const close = parseHHmm(closingTime, { hh: 23, mm: 0 });
+
+  const startHour = open.hh; // floor by nature
+  // ceil close hour if there are minutes (e.g. 22:30 should include 23)
+  const endHour = close.mm > 0 ? (close.hh + 1) % 24 : close.hh;
+
+  const hours: number[] = [];
+  let h = startHour;
+  hours.push(h);
+  // handle overnight (e.g. 18:00 → 02:00), guard max 24 points
+  while (hours.length < 24 && h !== endHour) {
+    h = (h + 1) % 24;
+    hours.push(h);
+  }
+  return hours;
+}
 
 function timeAgo(dateStr?: string): string {
   if (!dateStr) return "";
@@ -59,6 +104,8 @@ export function DashboardOverview({
   recentOrders,
   lastToken,
   hourlySales,
+  openingTime,
+  closingTime,
   allTimeRevenue,
   totalOrders
 }: DashboardOverviewProps) {
@@ -70,9 +117,12 @@ export function DashboardOverview({
     year: "numeric"
   });
 
-  const maxHourlySale = Math.max(...hourlySales, 1);
-  // Show hours 8 AM – 11 PM (typical restaurant hours)
-  const chartHours = Array.from({ length: 16 }, (_, i) => i + 8);
+  const chartHours = buildBusinessHours(openingTime, closingTime);
+  const series = chartHours.map((hour) => ({
+    hour,
+    label: formatHourLabel(hour),
+    revenue: hourlySales[hour] ?? 0
+  }));
 
   return (
     <div className="space-y-6">
@@ -137,23 +187,30 @@ export function DashboardOverview({
             <Badge variant="neutral">Live</Badge>
           </CardHeader>
           <CardContent>
-            <div className="flex h-[280px] items-end gap-1 rounded-2xl bg-[linear-gradient(180deg,#fff,rgba(246,243,238,0.96))] p-4">
-              {chartHours.map((hour) => {
-                const val = hourlySales[hour] ?? 0;
-                const pct = maxHourlySale > 0 ? Math.max((val / maxHourlySale) * 100, 2) : 2;
-                const label = hour <= 12 ? `${hour}${hour < 12 ? "a" : "p"}` : `${hour - 12}p`;
-                return (
-                  <div key={hour} className="flex flex-1 flex-col items-center gap-1" title={`${label}: ${formatCurrency(val)}`}>
-                    <div className="w-full flex items-end" style={{ height: "240px" }}>
-                      <div
-                        className="w-full rounded-t-lg bg-[linear-gradient(180deg,rgba(15,118,110,0.88),rgba(15,118,110,0.45))]"
-                        style={{ height: `${pct}%`, minHeight: "4px" }}
-                      />
-                    </div>
-                    <span className="text-[9px] font-medium text-text-muted">{label}</span>
-                  </div>
-                );
-              })}
+            <div className="h-[280px] rounded-2xl bg-[linear-gradient(180deg,#fff,rgba(246,243,238,0.96))] p-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={series} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={0} />
+                  <YAxis
+                    tick={{ fontSize: 11 }}
+                    width={44}
+                    tickFormatter={(v) => {
+                      const n = Number(v ?? 0);
+                      if (Number.isNaN(n)) return "";
+                      if (Math.abs(n) >= 100000) return `${Math.round(n / 1000)}k`;
+                      if (Math.abs(n) >= 1000) return `${Math.round(n / 100) / 10}k`;
+                      return String(Math.round(n));
+                    }}
+                  />
+                  <RechartsTooltip
+                    formatter={(value) => [formatCurrency(Number(value ?? 0)), "Revenue"]}
+                    labelFormatter={(label) => `Hour: ${label}`}
+                    contentStyle={{ borderRadius: 12, border: "1px solid #eee" }}
+                  />
+                  <Bar dataKey="revenue" fill="#0f766e" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>

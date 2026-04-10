@@ -123,7 +123,9 @@ export async function getLowStockAlerts(restaurantId: string) {
     isActive: true,
     $expr: { $lte: ["$currentStock", "$reorderLevel"] }
   })
+    .select({ name: 1, unit: 1, currentStock: 1, reorderLevel: 1 })
     .sort({ currentStock: 1 })
+    .limit(300)
     .lean();
 
   return ingredients.map((ing) => ({
@@ -181,16 +183,35 @@ export async function getInventoryLogs(restaurantId: string, limit = 50) {
   await connectToDatabase();
 
   const logs = await InventoryLog.find({ restaurantId: oid(restaurantId) })
+    .select({
+      ingredientId: 1,
+      type: 1,
+      quantity: 1,
+      previousStock: 1,
+      newStock: 1,
+      orderId: 1,
+      reason: 1,
+      createdAt: 1
+    })
     .sort({ createdAt: -1 })
     .limit(limit)
-    .populate("ingredientId", "name unit")
     .lean();
 
-  return logs.map((log) => ({
+  const ingredientIds = Array.from(new Set(logs.map((l) => l.ingredientId?.toString()).filter(Boolean))).map(oid);
+  const ingredients = ingredientIds.length
+    ? await Ingredient.find({ _id: { $in: ingredientIds }, restaurantId: oid(restaurantId) })
+        .select({ name: 1, unit: 1 })
+        .lean()
+    : [];
+  const ingredientMap = new Map(ingredients.map((i) => [i._id.toString(), i]));
+
+  return logs.map((log) => {
+    const ing = ingredientMap.get(log.ingredientId?.toString());
+    return {
     id: log._id.toString(),
     ingredientId: log.ingredientId?.toString(),
-    ingredientName: (log.ingredientId as any)?.name ?? "Unknown",
-    ingredientUnit: (log.ingredientId as any)?.unit ?? "",
+    ingredientName: (ing as any)?.name ?? "Unknown",
+    ingredientUnit: (ing as any)?.unit ?? "",
     type: log.type,
     quantity: log.quantity,
     previousStock: log.previousStock,
@@ -198,5 +219,6 @@ export async function getInventoryLogs(restaurantId: string, limit = 50) {
     orderId: log.orderId?.toString(),
     reason: log.reason,
     createdAt: (log as any).createdAt?.toISOString()
-  }));
+    };
+  });
 }

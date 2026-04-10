@@ -1,12 +1,14 @@
 import { ok, handleRouteError } from "@/lib/api/response";
-import { getSession } from "@/lib/auth/get-session";
+import { NextRequest } from "next/server";
+import { withAuth } from "@/lib/auth/with-auth";
 import { getSmartInsights } from "@/server/queries/reports";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const session = await getSession();
-    const data = await getSmartInsights({ restaurantId: session.restaurantId });
-    return ok(data);
+    return withAuth<any>(["owner", "manager"], async (_req, _ctx, session) => {
+      const data = await getSmartInsights({ restaurantId: session.restaurantId });
+      return ok(data);
+    })(request, {} as any);
   } catch (error) {
     return handleRouteError(error);
   }

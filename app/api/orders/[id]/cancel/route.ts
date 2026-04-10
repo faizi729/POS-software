@@ -1,5 +1,6 @@
 import { ok } from "@/lib/api/response";
-import { getSession } from "@/lib/auth/get-session";
+import { NextRequest } from "next/server";
+import { withAuth } from "@/lib/auth/with-auth";
 import { updateOrderStatus } from "@/server/repositories/mongo-repository";
 
 type RouteContext = {
@@ -8,13 +9,14 @@ type RouteContext = {
   }>;
 };
 
-export async function POST(_: Request, context: RouteContext) {
-  const { id } = await context.params;
-  const session = await getSession();
-  const order = await updateOrderStatus(id, session.restaurantId, "cancelled");
+export async function POST(request: NextRequest, context: RouteContext) {
+  return withAuth<RouteContext>(["owner", "manager", "cashier"], async (_req, context, session) => {
+    const { id } = await context.params;
+    const order = await updateOrderStatus(id, session.restaurantId, "cancelled");
 
-  return ok({
-    id: order.id,
-    status: order.status
-  });
+    return ok({
+      id: order.id,
+      status: order.status
+    });
+  })(request, context);
 }

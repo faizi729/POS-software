@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
@@ -25,6 +26,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
+import { useUiStore } from "@/store/ui-store";
 
 type NavHref =
   | "/dashboard"
@@ -68,6 +70,7 @@ function NavLinks({
   pathname: string;
   onNavigate?: () => void;
 }) {
+  const startRouteLoading = useUiStore((s) => s.startRouteLoading);
   return (
     <nav className="space-y-2">
       {navigation.map(({ href, label, badge }) => {
@@ -78,7 +81,10 @@ function NavLinks({
           <Link
             key={href}
             href={href}
-            onClick={onNavigate}
+            onClick={() => {
+              if (!isActive) startRouteLoading();
+              onNavigate?.();
+            }}
             className={cn(
               "flex items-center justify-between gap-3 rounded-xl px-3 py-3 text-sm font-medium transition",
               isActive
@@ -122,6 +128,7 @@ export function AppShellClient({
 }) {
   const pathname = usePathname();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const startRouteLoading = useUiStore((s) => s.startRouteLoading);
 
   return (
     <div className="min-h-screen">
@@ -137,7 +144,12 @@ export function AppShellClient({
               <div className="mb-5 flex items-center justify-between">
                 <div>
                   <p className="label-text">Navigation</p>
-                  <h3 className="mt-1">{restaurantName}</h3>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="grid size-9 place-items-center rounded-xl border border-border-subtle bg-white shadow-soft">
+                      <Image src="/logo.png" alt="Rasoio" width={20} height={20} className="select-none" />
+                    </span>
+                    <h3 className="leading-none">{restaurantName}</h3>
+                  </div>
                 </div>
                 <Button size="icon" variant="ghost" onClick={() => setIsDrawerOpen(false)}>
                   <X className="h-4 w-4" />
@@ -161,7 +173,10 @@ export function AppShellClient({
               <div className="space-y-2 border-t border-border-subtle pt-4">
                 <Link
                   href="/settings"
-                  onClick={() => setIsDrawerOpen(false)}
+                  onClick={() => {
+                    startRouteLoading();
+                    setIsDrawerOpen(false);
+                  }}
                   className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-sm font-medium text-text-secondary transition hover:bg-bg-surface hover:text-text-primary"
                 >
                   <span className="flex items-center gap-3">
@@ -196,6 +211,16 @@ export function AppShellClient({
           <main className="space-y-6">
             <header className="surface-card flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between md:p-5">
               <div className="flex items-start gap-3">
+                <div className="grid size-11 place-items-center rounded-2xl border border-border-subtle bg-bg-elevated shadow-soft">
+                  <Image
+                    src="/logo.png"
+                    alt="Rasoio"
+                    width={28}
+                    height={28}
+                    className="select-none"
+                    priority
+                  />
+                </div>
                 <Button
                   size="icon"
                   variant="secondary"

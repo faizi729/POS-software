@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 
 import { ok, handleRouteError } from "@/lib/api/response";
-import { getSession } from "@/lib/auth/get-session";
+import { withAuth } from "@/lib/auth/with-auth";
 import { menuDefinitionSchema } from "@/lib/validators/menu";
 import { slugify } from "@/lib/utils/slugify";
 import {
@@ -9,22 +9,16 @@ import {
   getMenuBuilderWorkspace
 } from "@/server/repositories/menu-builder-repository";
 
-export async function GET() {
-  try {
-    const session = await getSession();
+export async function GET(request: NextRequest) {
+  return withAuth<any>(["owner", "manager"], async (_req, _ctx, session) => {
     const workspace = await getMenuBuilderWorkspace(session.restaurantId);
-
     return ok({ menus: workspace.menus, summary: workspace.summary });
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  })(request, {} as any);
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const session = await getSession();
+  return withAuth<any>(["owner", "manager"], async (request, _ctx, session) => {
     const body = await request.json();
-    console.log("[menu/menus][POST] incoming body", body);
     const payload = menuDefinitionSchema.parse({
       ...body,
       restaurantId: session.restaurantId,
@@ -32,10 +26,6 @@ export async function POST(request: NextRequest) {
     });
 
     const menu = await createMenuDefinition(payload);
-    console.log("[menu/menus][POST] created menu", menu);
     return ok(menu, { status: 201 });
-  } catch (error) {
-    console.error("[menu/menus][POST] failed", error);
-    return handleRouteError(error);
-  }
+  })(request, {} as any);
 }

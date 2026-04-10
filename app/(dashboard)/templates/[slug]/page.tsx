@@ -25,6 +25,7 @@ import {
   Type,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { getTemplateStorageKey } from "@/lib/templates/storage";
 
 /* ── Template meta: theme keys & default values per template ─────────────── */
 interface TemplateMeta {
@@ -379,10 +380,14 @@ function ImageInput({
   label,
   value,
   onChange,
+  onUpload,
+  uploadingLabel,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  onUpload?: (file: File) => void | Promise<void>;
+  uploadingLabel?: string;
 }) {
   return (
     <div>
@@ -407,6 +412,22 @@ function ImageInput({
           placeholder="Paste image URL…"
           className="w-full rounded-lg border border-border-subtle bg-bg-surface px-3 py-2 text-xs text-text-primary outline-none transition-colors focus:border-accent-primary"
         />
+        {onUpload ? (
+          <label className="inline-flex w-fit cursor-pointer items-center justify-center rounded-lg border border-border-subtle bg-bg-surface px-3 py-2 text-xs font-semibold text-text-primary transition-colors hover:bg-bg-elevated">
+            {uploadingLabel || "Upload image"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                void onUpload(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        ) : null}
       </div>
     </div>
   );
@@ -438,6 +459,14 @@ export default function TemplateEditorPage() {
     description: "",
     heroImage: "",
     aboutImage: "",
+    gallery: "",
+    features: "",
+    rating: "",
+    reviews: "",
+    established: "",
+    statsCustomers: "",
+    statsYears: "",
+    statsDishes: "",
     phone: "",
     whatsapp: "",
     location: "",
@@ -454,26 +483,75 @@ export default function TemplateEditorPage() {
   const [device, setDevice] = useState<Device>("desktop");
   const [iframeKey, setIframeKey] = useState(0);
   const [mobileTab, setMobileTab] = useState<"edit" | "preview">("preview");
+  const [restaurantId, setRestaurantId] = useState<string>("");
+  const [uploading, setUploading] = useState<string | null>(null);
+
+  // Resolve current restaurant id (so template edits are isolated per tenant, even on localhost)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/restaurant/config", { credentials: "include" });
+        if (!res.ok) return;
+        const json = await res.json();
+        const rid = json?.data?.restaurant?.id ?? json?.restaurant?.id ?? "";
+        if (!cancelled && rid) setRestaurantId(String(rid));
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const getRestaurantDefaults = useCallback(() => {
+    // Ensure all editor fields exist even if a template doesn't use them.
+    return {
+      ...meta.defaults.restaurant,
+      gallery: "",
+      features: "",
+      rating: "",
+      reviews: "",
+      established: "",
+      statsCustomers: "",
+      statsYears: "",
+      statsDishes: ""
+    } as any;
+  }, [meta]);
 
   // Load saved data or defaults
   useEffect(() => {
     if (!meta) return;
-    const stored = localStorage.getItem(`__pos_tpl_${slug}`);
+    const scopedKey = getTemplateStorageKey(slug, restaurantId);
+    const legacyKey = getTemplateStorageKey(slug, null);
+    const stored = localStorage.getItem(scopedKey) || localStorage.getItem(legacyKey);
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
         setTheme(parsed.theme || meta.defaults.theme);
-        setRestaurant({ ...meta.defaults.restaurant, ...parsed.restaurant });
+          setRestaurant({
+            ...getRestaurantDefaults(),
+            gallery: Array.isArray(parsed?.restaurant?.gallery) ? parsed.restaurant.gallery.join("\n") : "",
+            features: Array.isArray(parsed?.restaurant?.features) ? parsed.restaurant.features.join("\n") : "",
+            rating: parsed?.restaurant?.rating != null ? String(parsed.restaurant.rating) : "",
+            reviews: parsed?.restaurant?.reviews != null ? String(parsed.restaurant.reviews) : "",
+            established: parsed?.restaurant?.established != null ? String(parsed.restaurant.established) : "",
+            statsCustomers: parsed?.restaurant?.stats?.customers != null ? String(parsed.restaurant.stats.customers) : "",
+            statsYears: parsed?.restaurant?.stats?.years != null ? String(parsed.restaurant.stats.years) : "",
+            statsDishes: parsed?.restaurant?.stats?.dishes != null ? String(parsed.restaurant.stats.dishes) : "",
+            ...parsed.restaurant
+          });
       } catch {
         setTheme({ ...meta.defaults.theme });
-        setRestaurant({ ...meta.defaults.restaurant });
+          setRestaurant(getRestaurantDefaults());
       }
     } else {
       setTheme({ ...meta.defaults.theme });
-      setRestaurant({ ...meta.defaults.restaurant });
+        setRestaurant(getRestaurantDefaults());
     }
     setHasLoaded(true);
-  }, [meta, slug]);
+  }, [meta, slug, restaurantId, getRestaurantDefaults]);
 
   /* ── Helpers ───────────────────────────────────────────────────────────── */
   const updateTheme = (key: string, value: string) => {
@@ -490,22 +568,87 @@ export default function TemplateEditorPage() {
     setIframeKey((k) => k + 1);
   }, []);
 
+  async function uploadTemplateImage(file: File, field: string) {
+    setUploading(field);
+    try {
+      const presignRes = await fetch("/api/uploads/r2/template-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          templateSlug: slug,
+          field,
+          contentType: file.type || "image/jpeg"
+        })
+      });
+      const presignJson = await presignRes.json().catch(() => ({}));
+      const uploadUrl = presignJson?.data?.uploadUrl ?? presignJson?.uploadUrl;
+      const publicUrl = presignJson?.data?.publicUrl ?? presignJson?.publicUrl;
+      if (!presignRes.ok || !uploadUrl || !publicUrl) {
+        throw new Error(presignJson?.data?.error ?? presignJson?.error ?? "Could not start upload");
+      }
+
+      const putRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file
+      });
+      if (!putRes.ok) throw new Error("Upload failed");
+      return String(publicUrl);
+    } finally {
+      setUploading(null);
+    }
+  }
+
   const handleSave = useCallback(() => {
+    const key = getTemplateStorageKey(slug, restaurantId);
+    const serializedRestaurant = {
+      ...restaurant,
+      gallery:
+        slug === "city-restaurant"
+          ? String((restaurant as any).gallery || "")
+              .split("\n")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : (restaurant as any).gallery,
+      features:
+        slug === "city-restaurant"
+          ? String((restaurant as any).features || "")
+              .split("\n")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : (restaurant as any).features,
+      rating:
+        slug === "city-restaurant" && (restaurant as any).rating !== ""
+          ? Number((restaurant as any).rating)
+          : (restaurant as any).rating,
+      reviews:
+        slug === "city-restaurant" && (restaurant as any).reviews !== ""
+          ? Number((restaurant as any).reviews)
+          : (restaurant as any).reviews,
+      stats:
+        slug === "city-restaurant"
+          ? {
+              customers: Number((restaurant as any).statsCustomers || 0) || 0,
+              years: Number((restaurant as any).statsYears || 0) || 0,
+              dishes: Number((restaurant as any).statsDishes || 0) || 0
+            }
+          : (restaurant as any).stats
+    };
     localStorage.setItem(
-      `__pos_tpl_${slug}`,
-      JSON.stringify({ theme, restaurant })
+      key,
+      JSON.stringify({ theme, restaurant: serializedRestaurant })
     );
     localStorage.setItem("__pos_selected_template", slug);
     setSaved(true);
     refreshPreview();
     setTimeout(() => setSaved(false), 2500);
-  }, [slug, theme, restaurant, refreshPreview]);
+  }, [slug, restaurantId, theme, restaurant, refreshPreview]);
 
   const handleReset = () => {
     if (!meta) return;
     setTheme({ ...meta.defaults.theme });
-    setRestaurant({ ...meta.defaults.restaurant });
-    localStorage.removeItem(`__pos_tpl_${slug}`);
+    setRestaurant(getRestaurantDefaults());
+    localStorage.removeItem(getTemplateStorageKey(slug, restaurantId));
     setSaved(false);
     refreshPreview();
   };
@@ -573,13 +716,112 @@ export default function TemplateEditorPage() {
           label="Hero Image"
           value={restaurant.heroImage}
           onChange={(v) => updateRestaurant("heroImage", v)}
+          onUpload={async (file) => {
+            const url = await uploadTemplateImage(file, "heroImage");
+            updateRestaurant("heroImage", url);
+          }}
+          uploadingLabel={uploading === "heroImage" ? "Uploading..." : "Upload hero image"}
         />
         <ImageInput
           label="About / Chef Image"
           value={restaurant.aboutImage}
           onChange={(v) => updateRestaurant("aboutImage", v)}
+          onUpload={async (file) => {
+            const url = await uploadTemplateImage(file, "aboutImage");
+            updateRestaurant("aboutImage", url);
+          }}
+          uploadingLabel={uploading === "aboutImage" ? "Uploading..." : "Upload about image"}
         />
+        {slug === "city-restaurant" ? (
+          <TextInput
+            label="Gallery Images (one URL per line)"
+            value={(restaurant as any).gallery || ""}
+            onChange={(v) => updateRestaurant("gallery", v)}
+            placeholder="https://...\nhttps://...\nhttps://..."
+            multiline
+          />
+        ) : null}
+        {slug === "city-restaurant" ? (
+          <label className="inline-flex w-fit cursor-pointer items-center justify-center rounded-lg border border-border-subtle bg-bg-surface px-3 py-2 text-xs font-semibold text-text-primary transition-colors hover:bg-bg-elevated">
+            {uploading === "gallery" ? "Uploading..." : "Upload gallery images"}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={async (e) => {
+                const files = Array.from(e.target.files ?? []);
+                if (files.length === 0) return;
+                for (const f of files) {
+                  const url = await uploadTemplateImage(f, "gallery");
+                  setRestaurant((prev) => ({
+                    ...prev,
+                    gallery: [prev.gallery, url].filter(Boolean).join("\n")
+                  }));
+                }
+                e.target.value = "";
+              }}
+            />
+          </label>
+        ) : null}
       </EditorSection>
+
+      {slug === "city-restaurant" ? (
+        <EditorSection
+          title="Highlights & Social Proof"
+          icon={<Globe className="h-4 w-4 text-amber-500" />}
+          defaultOpen={false}
+        >
+          <TextInput
+            label="Features (one per line)"
+            value={(restaurant as any).features || ""}
+            onChange={(v) => updateRestaurant("features", v)}
+            placeholder="Farm-to-table ingredients\nWood-fired kitchen\nCraft cocktail bar"
+            multiline
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <TextInput
+              label="Rating"
+              value={(restaurant as any).rating || ""}
+              onChange={(v) => updateRestaurant("rating", v)}
+              placeholder="4.8"
+            />
+            <TextInput
+              label="Reviews count"
+              value={(restaurant as any).reviews || ""}
+              onChange={(v) => updateRestaurant("reviews", v)}
+              placeholder="1247"
+            />
+            <TextInput
+              label="Established year"
+              value={(restaurant as any).established || ""}
+              onChange={(v) => updateRestaurant("established", v)}
+              placeholder="2011"
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <TextInput
+              label="Customers"
+              value={(restaurant as any).statsCustomers || ""}
+              onChange={(v) => updateRestaurant("statsCustomers", v)}
+              placeholder="25000"
+            />
+            <TextInput
+              label="Years"
+              value={(restaurant as any).statsYears || ""}
+              onChange={(v) => updateRestaurant("statsYears", v)}
+              placeholder="14"
+            />
+            <TextInput
+              label="Dishes"
+              value={(restaurant as any).statsDishes || ""}
+              onChange={(v) => updateRestaurant("statsDishes", v)}
+              placeholder="85"
+            />
+          </div>
+        </EditorSection>
+      ) : null}
 
       {/* ─── Contact Info ──────────────────────────────────────────────── */}
       <EditorSection
@@ -776,7 +1018,7 @@ export default function TemplateEditorPage() {
           </button>
 
           <Link
-            href={{ pathname: "/template/[slug]", query: { slug } }}
+            href={`/template/${slug}?liveMenu=1` as any}
             target="_blank"
             className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-[11px] font-medium text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary"
           >
@@ -863,7 +1105,7 @@ export default function TemplateEditorPage() {
               <iframe
                 ref={iframeRef}
                 key={iframeKey}
-                src={`/template/${slug}`}
+                src={`/template/${slug}?liveMenu=1`}
                 className="h-full w-full border-0"
                 title={`${meta.name} Preview`}
               />

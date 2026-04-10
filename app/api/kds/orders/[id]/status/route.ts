@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { ok, fail, handleRouteError } from "@/lib/api/response";
-import { getSession } from "@/lib/auth/get-session";
+import { withAuth } from "@/lib/auth/with-auth";
 import { connectToDatabase } from "@/lib/db/connect";
 import { Order } from "@/models";
 import { Types } from "mongoose";
@@ -28,45 +28,49 @@ type RouteContext = {
  */
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    const session = await getSession();
-    const { id } = await context.params;
-    const body = await request.json();
-    const { status: newStatus } = statusUpdateSchema.parse(body);
+    return withAuth<RouteContext>(["owner", "manager", "staff"], async (request, context, session) => {
+      const { id } = await context.params;
+      const body = await request.json();
+      const { status: newStatus } = statusUpdateSchema.parse(body);
 
-    await connectToDatabase();
+      await connectToDatabase();
 
-    const order = await Order.findOne({
-      _id: new Types.ObjectId(id),
-      restaurantId: new Types.ObjectId(session.restaurantId)
-    });
+      // Single round-trip update with transition enforcement in the query.
+      const restaurantId = new Types.ObjectId(session.restaurantId);
+      const orderId = new Types.ObjectId(id);
 
-    if (!order) {
-      return fail("Order not found.", 404);
-    }
+      // Determine allowed previous statuses for the requested newStatus.
+      const allowedPrev = Object.entries(VALID_TRANSITIONS)
+        .filter(([, next]) => next.includes(newStatus))
+        .map(([prev]) => prev);
 
-    // Validate transition
-    const validNext = VALID_TRANSITIONS[order.status as string];
-    if (!validNext || !validNext.includes(newStatus)) {
-      return fail(
-        `Cannot transition from "${order.status}" to "${newStatus}". Valid: ${validNext?.join(", ") ?? "none"}`,
-        400
-      );
-    }
+      const updated = await Order.findOneAndUpdate(
+        {
+          _id: orderId,
+          restaurantId,
+          status: { $in: allowedPrev }
+        },
+        {
+          $set: { status: newStatus },
+          ...(newStatus === "completed" ? { $currentDate: { completedAt: true } } : {})
+        },
+        { new: true }
+      )
+        .select({ orderNumber: 1, status: 1, updatedAt: 1 })
+        .lean();
 
-    order.status = newStatus as any;
+      if (!updated) {
+        // Either missing order OR invalid transition (most common: stale UI)
+        return fail("Order not found or invalid status transition.", 404);
+      }
 
-    if (newStatus === "completed") {
-      order.completedAt = new Date();
-    }
-
-    await order.save();
-
-    return ok({
-      id: order._id.toString(),
-      orderNumber: order.orderNumber,
-      status: order.status,
-      updatedAt: (order.updatedAt as unknown as Date)?.toISOString()
-    });
+      return ok({
+        id: updated._id.toString(),
+        orderNumber: updated.orderNumber,
+        status: updated.status,
+        updatedAt: (updated.updatedAt as unknown as Date)?.toISOString()
+      });
+    })(request, context);
   } catch (error) {
     return handleRouteError(error);
   }

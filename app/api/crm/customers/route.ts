@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { ok, handleRouteError } from "@/lib/api/response";
-import { getSession } from "@/lib/auth/get-session";
+import { withAuth } from "@/lib/auth/with-auth";
 import { getCustomers } from "@/server/services/crm-service";
 import { connectToDatabase } from "@/lib/db/connect";
 import { Customer } from "@/models";
@@ -21,16 +21,17 @@ const customerCreateSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession();
     const searchParams = request.nextUrl.searchParams;
 
-    const customers = await getCustomers(session.restaurantId, {
-      search: searchParams.get("search") ?? undefined,
-      sort: searchParams.get("sort") ?? undefined,
-      limit: Number(searchParams.get("limit")) || 100
-    });
+    return withAuth<any>(["owner", "manager"], async (_req, _ctx, session) => {
+      const customers = await getCustomers(session.restaurantId, {
+        search: searchParams.get("search") ?? undefined,
+        sort: searchParams.get("sort") ?? undefined,
+        limit: Number(searchParams.get("limit")) || 100
+      });
 
-    return ok(customers);
+      return ok(customers);
+    })(request, {} as any);
   } catch (error) {
     return handleRouteError(error);
   }
@@ -41,8 +42,7 @@ export async function GET(request: NextRequest) {
  * Manually add a customer
  */
 export async function POST(request: NextRequest) {
-  try {
-    const session = await getSession();
+  return withAuth<any>(["owner", "manager"], async (request, _ctx, session) => {
     const body = await request.json();
     const payload = customerCreateSchema.parse(body);
 
@@ -67,7 +67,5 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     );
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  })(request, {} as any);
 }

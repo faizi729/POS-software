@@ -6,15 +6,15 @@
 import { Types } from "mongoose";
 import { connectToDatabase } from "@/lib/db/connect";
 import { WaSession } from "@/models";
-import { WA_CONFIG, WA_STATES, WaState } from "@/lib/whatsapp/config";
+import { WA_STATES, WaState } from "@/lib/whatsapp/config";
 
 function oid(id: string) {
   return new Types.ObjectId(id);
 }
 
-function sessionExpiry() {
+function sessionExpiry(ttlHours: number) {
   const d = new Date();
-  d.setHours(d.getHours() + WA_CONFIG.sessionTtlHours);
+  d.setHours(d.getHours() + ttlHours);
   return d;
 }
 
@@ -28,6 +28,7 @@ export type CartItem = {
 
 export type SessionData = {
   id: string;
+  restaurantId: string;
   phone: string;
   state: WaState;
   cart: { items: CartItem[]; total: number };
@@ -45,6 +46,7 @@ export type SessionData = {
 function serialize(doc: any): SessionData {
   return {
     id: doc._id.toString(),
+    restaurantId: doc.restaurantId?.toString?.() ?? "",
     phone: doc.phone,
     state: doc.state,
     cart: {
@@ -74,8 +76,11 @@ function serialize(doc: any): SessionData {
  */
 export async function getOrCreateSession(phone: string): Promise<SessionData> {
   await connectToDatabase();
+  throw new Error("getOrCreateSession(restaurantId, phone) required");
+}
 
-  const restaurantId = WA_CONFIG.restaurantId;
+export async function getOrCreateSessionForRestaurant(restaurantId: string, phone: string, ttlHours = 24): Promise<SessionData> {
+  await connectToDatabase();
 
   let session = await WaSession.findOne({
     restaurantId: oid(restaurantId),
@@ -88,7 +93,7 @@ export async function getOrCreateSession(phone: string): Promise<SessionData> {
       phone,
       state: WA_STATES.START,
       cart: { items: [], total: 0 },
-      expiresAt: sessionExpiry(),
+      expiresAt: sessionExpiry(ttlHours),
     });
   }
 
@@ -115,11 +120,31 @@ export async function updateSession(
   }>
 ): Promise<SessionData> {
   await connectToDatabase();
+  throw new Error("updateSession(restaurantId, phone, updates) required");
+}
 
-  const restaurantId = WA_CONFIG.restaurantId;
+export async function updateSessionForRestaurant(
+  restaurantId: string,
+  phone: string,
+  updates: Partial<{
+    state: WaState;
+    cart: { items: CartItem[]; total: number };
+    selectedItemId: string | null;
+    selectedCategoryId: string | null;
+    customerName: string;
+    customerAddress: string;
+    orderType: string;
+    paymentStatus: string;
+    paymentLinkId: string;
+    paymentLinkUrl: string;
+    orderId: string;
+  }>,
+  ttlHours = 24
+): Promise<SessionData> {
+  await connectToDatabase();
 
   // Convert cart items' menuItemId to ObjectId if present
-  const setFields: any = { ...updates, expiresAt: sessionExpiry() };
+  const setFields: any = { ...updates, expiresAt: sessionExpiry(ttlHours) };
 
   if (updates.cart) {
     setFields.cart = {
@@ -156,7 +181,11 @@ export async function updateSession(
  * Reset a session back to START with empty cart.
  */
 export async function resetSession(phone: string): Promise<SessionData> {
-  return updateSession(phone, {
+  throw new Error("resetSession(restaurantId, phone) required");
+}
+
+export async function resetSessionForRestaurant(restaurantId: string, phone: string, ttlHours = 24): Promise<SessionData> {
+  return updateSessionForRestaurant(restaurantId, phone, {
     state: WA_STATES.START,
     cart: { items: [], total: 0 },
     selectedItemId: null,
@@ -167,7 +196,7 @@ export async function resetSession(phone: string): Promise<SessionData> {
     paymentLinkId: undefined,
     paymentLinkUrl: undefined,
     orderId: undefined,
-  });
+  }, ttlHours);
 }
 
 /**

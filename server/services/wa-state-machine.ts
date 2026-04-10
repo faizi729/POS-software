@@ -17,14 +17,15 @@ import { connectToDatabase } from "@/lib/db/connect";
 import { MenuCategory, MenuItem } from "@/models";
 import { WA_CONFIG, WA_STATES, WaState } from "@/lib/whatsapp/config";
 import {
-  sendText,
-  sendButtons,
-  sendList,
+  sendTextWithConfig,
+  sendButtonsWithConfig,
+  sendListWithConfig,
 } from "@/lib/whatsapp/client";
+import { getRestaurantWaConfig } from "@/lib/whatsapp/restaurant-config";
 import {
-  getOrCreateSession,
-  updateSession,
-  resetSession,
+  getOrCreateSessionForRestaurant,
+  updateSessionForRestaurant,
+  resetSessionForRestaurant,
   type SessionData,
 } from "./wa-session-service";
 import {
@@ -58,6 +59,20 @@ function oid(id: string) {
   return new Types.ObjectId(id);
 }
 
+function waRestaurantId() {
+  // Current design: a single WA number is bound to a single restaurant (env/config).
+  // Multi-tenant WA routing should map incoming phone_number_id -> restaurantId.
+  return WA_CONFIG.restaurantId;
+}
+
+async function waConfig(restaurantId: string) {
+  const cfg = await getRestaurantWaConfig(restaurantId);
+  if (!cfg.token || !cfg.phoneNumberId) {
+    throw new Error("WhatsApp tenant config missing for this restaurant.");
+  }
+  return { token: cfg.token, phoneNumberId: cfg.phoneNumberId };
+}
+
 const restaurantId = () => WA_CONFIG.restaurantId;
 
 /**
@@ -70,7 +85,7 @@ async function handleUniversalCommand(
   const text = msg.text?.trim().toLowerCase();
 
   if (text === "menu" || text === "start" || text === "hi" || text === "hello") {
-    await resetSession(msg.from);
+    await resetSessionForRestaurant(session.restaurantId || restaurantId(), msg.from);
     await sendWelcome(msg.from);
     return true;
   }
@@ -82,18 +97,19 @@ async function handleUniversalCommand(
 
   if (text === "checkout") {
     if (session.cart.items.length === 0) {
-      await sendText(msg.from, "Your cart is empty. Browse our menu first! 🍽️");
+      await sendTextWithConfig(await waConfig(session.restaurantId || restaurantId()), msg.from, "Your cart is empty. Browse our menu first! 🍽️");
       await sendWelcome(msg.from);
       return true;
     }
-    await updateSession(msg.from, { state: WA_STATES.CHECKOUT_NAME });
-    await sendText(msg.from, "Great! Let's checkout 🧾\n\nWhat is your *name*?");
+    await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, { state: WA_STATES.CHECKOUT_NAME });
+    await sendTextWithConfig(await waConfig(session.restaurantId || restaurantId()), msg.from, "Great! Let's checkout 🧾\n\nWhat is your *name*?");
     return true;
   }
 
   if (text === "cancel") {
-    await resetSession(msg.from);
-    await sendText(
+    await resetSessionForRestaurant(session.restaurantId || restaurantId(), msg.from);
+    await sendTextWithConfig(
+      await waConfig(session.restaurantId || restaurantId()),
       msg.from,
       "Order cancelled. Your cart has been cleared. 🗑️\n\nSend *menu* to start again."
     );
@@ -106,7 +122,8 @@ async function handleUniversalCommand(
 /* ─────── Message builders ─────── */
 
 async function sendWelcome(phone: string) {
-  await sendButtons(
+  await sendButtonsWithConfig(
+    await waConfig(restaurantId()),
     phone,
     "Welcome to our restaurant! 🍽️\n\nHow would you like to order?",
     [
@@ -130,7 +147,7 @@ async function showCategories(phone: string) {
     .lean();
 
   if (categories.length === 0) {
-    await sendText(phone, "Sorry, no categories available right now. Please try again later.");
+    await sendTextWithConfig(await waConfig(restaurantId()), phone, "Sorry, no categories available right now. Please try again later.");
     return;
   }
 
@@ -139,7 +156,8 @@ async function showCategories(phone: string) {
     title: cat.name.slice(0, 24),
   }));
 
-  await sendList(
+  await sendListWithConfig(
+    await waConfig(restaurantId()),
     phone,
     "Choose a category to browse items 👇",
     "View Categories",
@@ -162,7 +180,7 @@ async function showCategoryItems(phone: string, categoryId: string) {
     .lean();
 
   if (items.length === 0) {
-    await sendText(phone, "No items available in this category right now. 😔");
+    await sendTextWithConfig(await waConfig(restaurantId()), phone, "No items available in this category right now. 😔");
     await showCategories(phone);
     return;
   }
@@ -182,7 +200,8 @@ async function showCategoryItems(phone: string, categoryId: string) {
     });
   }
 
-  await sendList(
+  await sendListWithConfig(
+    await waConfig(restaurantId()),
     phone,
     "Select an item to add to your cart 🛒",
     "View Items",
@@ -195,14 +214,15 @@ async function showCart(phone: string, session: SessionData) {
   const cartText = formatCartMessage(session.cart);
 
   if (session.cart.items.length === 0) {
-    await sendText(phone, "Your cart is empty. Browse our menu first! 🍽️");
+    await sendTextWithConfig(await waConfig(session.restaurantId || restaurantId()), phone, "Your cart is empty. Browse our menu first! 🍽️");
     await sendWelcome(phone);
     return;
   }
 
-  await updateSession(phone, { state: WA_STATES.CART_VIEW });
+  await updateSessionForRestaurant(session.restaurantId || restaurantId(), phone, { state: WA_STATES.CART_VIEW });
 
-  await sendButtons(
+  await sendButtonsWithConfig(
+    await waConfig(session.restaurantId || restaurantId()),
     phone,
     `🛒 *Your Cart*\n\n${cartText}`,
     [
@@ -215,7 +235,8 @@ async function showCart(phone: string, session: SessionData) {
 }
 
 async function askQuantity(phone: string, itemName: string) {
-  await sendButtons(
+  await sendButtonsWithConfig(
+    await waConfig(restaurantId()),
     phone,
     `How many *${itemName}* would you like to add?`,
     [
@@ -227,7 +248,8 @@ async function askQuantity(phone: string, itemName: string) {
 }
 
 async function sendItemAdded(phone: string, itemName: string, qty: number) {
-  await sendButtons(
+  await sendButtonsWithConfig(
+    await waConfig(restaurantId()),
     phone,
     `✅ Added *${qty}× ${itemName}* to your cart!`,
     [
@@ -246,14 +268,15 @@ async function sendPaymentLink(phone: string, session: SessionData) {
     customerPhone: phone,
   });
 
-  await updateSession(phone, {
+  await updateSessionForRestaurant(session.restaurantId || restaurantId(), phone, {
     state: WA_STATES.PAYMENT_PENDING,
     paymentStatus: "pending",
     paymentLinkId: link.id,
     paymentLinkUrl: link.shortUrl,
   });
 
-  await sendText(
+  await sendTextWithConfig(
+    await waConfig(session.restaurantId || restaurantId()),
     phone,
     `💳 *Payment Required*\n\n` +
     `Amount: ₹${session.cart.total}\n\n` +
@@ -267,7 +290,8 @@ async function sendOrderConfirmation(
   orderNumber: string,
   tokenNumber: number
 ) {
-  await sendText(
+  await sendTextWithConfig(
+    await waConfig(restaurantId()),
     phone,
     `🎉 *Order Confirmed!*\n\n` +
     `Order: *#${orderNumber}*\n` +
@@ -279,7 +303,8 @@ async function sendOrderConfirmation(
 }
 
 async function sendFallback(phone: string) {
-  await sendButtons(
+  await sendButtonsWithConfig(
+    await waConfig(restaurantId()),
     phone,
     "Sorry, I didn't understand that. 😅\n\nPlease choose an option below 👇",
     [
@@ -312,7 +337,7 @@ async function handleStart(msg: IncomingMessage, session: SessionData) {
   const btnId = msg.buttonReplyId;
 
   if (btnId === "btn_browse_catalog" || btnId === "btn_chat_order") {
-    await updateSession(msg.from, { state: WA_STATES.BROWSING });
+    await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, { state: WA_STATES.BROWSING });
     await showCategories(msg.from);
     return;
   }
@@ -326,12 +351,17 @@ async function handleBrowsing(msg: IncomingMessage, session: SessionData) {
   if (msg.productIds && msg.productIds.length > 0) {
     const productId = msg.productIds[0];
     await connectToDatabase();
-    const item = await MenuItem.findById(oid(productId))
+    const item = await MenuItem.findOne({
+      _id: oid(productId),
+      restaurantId: oid(waRestaurantId()),
+      isActive: true,
+      isAvailable: true
+    })
       .select("_id name price")
       .lean();
 
     if (item) {
-      await updateSession(msg.from, {
+      await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, {
         state: WA_STATES.ADDING_QUANTITY,
         selectedItemId: item._id.toString(),
       });
@@ -344,7 +374,7 @@ async function handleBrowsing(msg: IncomingMessage, session: SessionData) {
   const listId = msg.listReplyId;
   if (listId?.startsWith("cat_")) {
     const categoryId = listId.replace("cat_", "");
-    await updateSession(msg.from, {
+    await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, {
       state: WA_STATES.BROWSING,
       selectedCategoryId: categoryId,
     });
@@ -356,12 +386,17 @@ async function handleBrowsing(msg: IncomingMessage, session: SessionData) {
   if (listId?.startsWith("item_")) {
     const itemId = listId.replace("item_", "");
     await connectToDatabase();
-    const item = await MenuItem.findById(oid(itemId))
+    const item = await MenuItem.findOne({
+      _id: oid(itemId),
+      restaurantId: oid(waRestaurantId()),
+      isActive: true,
+      isAvailable: true
+    })
       .select("_id name price")
       .lean();
 
     if (item) {
-      await updateSession(msg.from, {
+      await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, {
         state: WA_STATES.ADDING_QUANTITY,
         selectedItemId: item._id.toString(),
       });
@@ -381,7 +416,7 @@ async function handleBrowsing(msg: IncomingMessage, session: SessionData) {
   if (msg.text) {
     const found = await fuzzyFindItem(msg.text);
     if (found) {
-      await updateSession(msg.from, {
+      await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, {
         state: WA_STATES.ADDING_QUANTITY,
         selectedItemId: found._id.toString(),
       });
@@ -396,7 +431,7 @@ async function handleBrowsing(msg: IncomingMessage, session: SessionData) {
 
 async function handleAddingQuantity(msg: IncomingMessage, session: SessionData) {
   if (!session.selectedItemId) {
-    await updateSession(msg.from, { state: WA_STATES.BROWSING });
+    await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, { state: WA_STATES.BROWSING });
     await showCategories(msg.from);
     return;
   }
@@ -415,19 +450,23 @@ async function handleAddingQuantity(msg: IncomingMessage, session: SessionData) 
   }
 
   if (qty <= 0) {
-    await sendText(msg.from, "Please enter a valid quantity (1-99) or tap a button above.");
+    await sendTextWithConfig(await waConfig(session.restaurantId || restaurantId()), msg.from, "Please enter a valid quantity (1-99) or tap a button above.");
     return;
   }
 
   // Fetch the item
   await connectToDatabase();
-  const item = await MenuItem.findById(oid(session.selectedItemId))
+  const item = await MenuItem.findOne({
+    _id: oid(session.selectedItemId),
+    restaurantId: oid(waRestaurantId()),
+    isActive: true
+  })
     .select("_id name price")
     .lean();
 
   if (!item) {
-    await sendText(msg.from, "Sorry, this item is no longer available. 😔");
-    await updateSession(msg.from, { state: WA_STATES.BROWSING });
+    await sendTextWithConfig(await waConfig(session.restaurantId || restaurantId()), msg.from, "Sorry, this item is no longer available. 😔");
+    await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, { state: WA_STATES.BROWSING });
     await showCategories(msg.from);
     return;
   }
@@ -439,7 +478,7 @@ async function handleAddingQuantity(msg: IncomingMessage, session: SessionData) 
     price: item.price,
   }, qty);
 
-  await updateSession(msg.from, {
+  await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, {
     state: WA_STATES.ITEM_SELECTED,
     cart: newCart,
     selectedItemId: null,
@@ -452,7 +491,7 @@ async function handleItemSelected(msg: IncomingMessage, session: SessionData) {
   const btnId = msg.buttonReplyId;
 
   if (btnId === "btn_add_more" || btnId === "btn_browse_catalog") {
-    await updateSession(msg.from, { state: WA_STATES.BROWSING });
+    await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, { state: WA_STATES.BROWSING });
     await showCategories(msg.from);
     return;
   }
@@ -464,11 +503,11 @@ async function handleItemSelected(msg: IncomingMessage, session: SessionData) {
 
   if (btnId === "btn_checkout") {
     if (session.cart.items.length === 0) {
-      await sendText(msg.from, "Your cart is empty! Add some items first. 🍽️");
+      await sendTextWithConfig(await waConfig(session.restaurantId || restaurantId()), msg.from, "Your cart is empty! Add some items first. 🍽️");
       return;
     }
-    await updateSession(msg.from, { state: WA_STATES.CHECKOUT_NAME });
-    await sendText(msg.from, "Great! Let's checkout 🧾\n\nWhat is your *name*?");
+    await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, { state: WA_STATES.CHECKOUT_NAME });
+    await sendTextWithConfig(await waConfig(session.restaurantId || restaurantId()), msg.from, "Great! Let's checkout 🧾\n\nWhat is your *name*?");
     return;
   }
 
@@ -476,12 +515,16 @@ async function handleItemSelected(msg: IncomingMessage, session: SessionData) {
   if (msg.productIds && msg.productIds.length > 0) {
     const productId = msg.productIds[0];
     await connectToDatabase();
-    const item = await MenuItem.findById(oid(productId))
+    const item = await MenuItem.findOne({
+      _id: oid(productId),
+      restaurantId: oid(waRestaurantId()),
+      isActive: true
+    })
       .select("_id name price")
       .lean();
 
     if (item) {
-      await updateSession(msg.from, {
+      await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, {
         state: WA_STATES.ADDING_QUANTITY,
         selectedItemId: item._id.toString(),
       });
@@ -498,27 +541,27 @@ async function handleCartView(msg: IncomingMessage, session: SessionData) {
   const btnId = msg.buttonReplyId;
 
   if (btnId === "btn_add_more") {
-    await updateSession(msg.from, { state: WA_STATES.BROWSING });
+    await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, { state: WA_STATES.BROWSING });
     await showCategories(msg.from);
     return;
   }
 
   if (btnId === "btn_checkout") {
     if (session.cart.items.length === 0) {
-      await sendText(msg.from, "Your cart is empty! Add some items first. 🍽️");
+      await sendTextWithConfig(await waConfig(session.restaurantId || restaurantId()), msg.from, "Your cart is empty! Add some items first. 🍽️");
       return;
     }
-    await updateSession(msg.from, { state: WA_STATES.CHECKOUT_NAME });
-    await sendText(msg.from, "Great! Let's checkout 🧾\n\nWhat is your *name*?");
+    await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, { state: WA_STATES.CHECKOUT_NAME });
+    await sendTextWithConfig(await waConfig(session.restaurantId || restaurantId()), msg.from, "Great! Let's checkout 🧾\n\nWhat is your *name*?");
     return;
   }
 
   if (btnId === "btn_clear_cart") {
-    await updateSession(msg.from, {
+    await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, {
       state: WA_STATES.START,
       cart: clearCart(),
     });
-    await sendText(msg.from, "Cart cleared! 🗑️");
+    await sendTextWithConfig(await waConfig(session.restaurantId || restaurantId()), msg.from, "Cart cleared! 🗑️");
     await sendWelcome(msg.from);
     return;
   }
@@ -527,12 +570,16 @@ async function handleCartView(msg: IncomingMessage, session: SessionData) {
   if (msg.productIds && msg.productIds.length > 0) {
     const productId = msg.productIds[0];
     await connectToDatabase();
-    const item = await MenuItem.findById(oid(productId))
+    const item = await MenuItem.findOne({
+      _id: oid(productId),
+      restaurantId: oid(waRestaurantId()),
+      isActive: true
+    })
       .select("_id name price")
       .lean();
 
     if (item) {
-      await updateSession(msg.from, {
+      await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, {
         state: WA_STATES.ADDING_QUANTITY,
         selectedItemId: item._id.toString(),
       });
@@ -548,16 +595,17 @@ async function handleCheckoutName(msg: IncomingMessage, session: SessionData) {
   const name = msg.text?.trim();
 
   if (!name || name.length < 2) {
-    await sendText(msg.from, "Please enter your name (at least 2 characters).");
+    await sendTextWithConfig(await waConfig(session.restaurantId || restaurantId()), msg.from, "Please enter your name (at least 2 characters).");
     return;
   }
 
-  await updateSession(msg.from, {
+  await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, {
     state: WA_STATES.CHECKOUT_ADDRESS,
     customerName: name,
   });
 
-  await sendButtons(
+  await sendButtonsWithConfig(
+    await waConfig(session.restaurantId || restaurantId()),
     msg.from,
     `Thanks, *${name}*! 😊\n\nWould you like delivery or pickup?`,
     [
@@ -571,16 +619,17 @@ async function handleCheckoutAddress(msg: IncomingMessage, session: SessionData)
   const btnId = msg.buttonReplyId;
 
   if (btnId === "type_takeaway") {
-    await updateSession(msg.from, {
+    await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, {
       orderType: "takeaway",
     });
     // Skip address, go straight to payment
-    const updatedSession = await updateSession(msg.from, {
+    const updatedSession = await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, {
       state: WA_STATES.PAYMENT_PENDING,
     });
     const cartText = formatCartMessage(updatedSession.cart);
 
-    await sendButtons(
+    await sendButtonsWithConfig(
+      await waConfig(session.restaurantId || restaurantId()),
       msg.from,
       `📋 *Order Summary*\n\n${cartText}\n\nName: *${updatedSession.customerName}*\nType: *Pickup*`,
       [
@@ -593,8 +642,9 @@ async function handleCheckoutAddress(msg: IncomingMessage, session: SessionData)
   }
 
   if (btnId === "type_delivery") {
-    await updateSession(msg.from, { orderType: "takeaway" }); // still takeaway in POS
-    await sendText(
+    await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, { orderType: "takeaway" }); // still takeaway in POS
+    await sendTextWithConfig(
+      await waConfig(session.restaurantId || restaurantId()),
       msg.from,
       "Please share your *delivery address*: 📍"
     );
@@ -604,14 +654,15 @@ async function handleCheckoutAddress(msg: IncomingMessage, session: SessionData)
   // If text, assume it's the address
   const address = msg.text?.trim();
   if (address && address.length >= 5) {
-    const updatedSession = await updateSession(msg.from, {
+    const updatedSession = await updateSessionForRestaurant(session.restaurantId || restaurantId(), msg.from, {
       customerAddress: address,
       state: WA_STATES.PAYMENT_PENDING,
     });
 
     const cartText = formatCartMessage(updatedSession.cart);
 
-    await sendButtons(
+    await sendButtonsWithConfig(
+      await waConfig(session.restaurantId || restaurantId()),
       msg.from,
       `📋 *Order Summary*\n\n${cartText}\n\nName: *${updatedSession.customerName}*\nAddress: *${address}*`,
       [
@@ -624,19 +675,19 @@ async function handleCheckoutAddress(msg: IncomingMessage, session: SessionData)
   }
 
   if (address) {
-    await sendText(msg.from, "Address seems too short. Please provide a more detailed address.");
+    await sendTextWithConfig(await waConfig(session.restaurantId || restaurantId()), msg.from, "Address seems too short. Please provide a more detailed address.");
     return;
   }
 
-  await sendText(msg.from, "Please share your delivery address or tap *Pickup*.");
+  await sendTextWithConfig(await waConfig(session.restaurantId || restaurantId()), msg.from, "Please share your delivery address or tap *Pickup*.");
 }
 
 async function handlePaymentPending(msg: IncomingMessage, session: SessionData) {
   const btnId = msg.buttonReplyId;
 
   if (btnId === "btn_cancel_order") {
-    await resetSession(msg.from);
-    await sendText(msg.from, "Order cancelled. 🗑️\n\nSend *menu* to start again.");
+    await resetSessionForRestaurant(session.restaurantId || restaurantId(), msg.from);
+    await sendTextWithConfig(await waConfig(session.restaurantId || restaurantId()), msg.from, "Order cancelled. 🗑️\n\nSend *menu* to start again.");
     return;
   }
 
@@ -646,7 +697,8 @@ async function handlePaymentPending(msg: IncomingMessage, session: SessionData) 
       await sendPaymentLink(msg.from, session);
     } catch (err) {
       console.error("[wa-state] payment link creation failed:", err);
-      await sendText(
+      await sendTextWithConfig(
+        await waConfig(session.restaurantId || restaurantId()),
         msg.from,
         "Sorry, we couldn't create a payment link right now. Please try again. 😔"
       );
@@ -656,24 +708,27 @@ async function handlePaymentPending(msg: IncomingMessage, session: SessionData) 
 
   // If payment is already pending, remind them
   if (session.paymentLinkUrl) {
-    await sendText(
+    await sendTextWithConfig(
+      await waConfig(session.restaurantId || restaurantId()),
       msg.from,
       `⏳ Your payment is pending.\n\nClick here to pay: ${session.paymentLinkUrl}\n\nOr send *cancel* to cancel.`
     );
     return;
   }
 
-  await sendText(
+  await sendTextWithConfig(
+    await waConfig(session.restaurantId || restaurantId()),
     msg.from,
     "Please tap *Pay Now* to proceed or *Cancel* to cancel."
   );
 }
 
 async function handleOrderConfirmed(msg: IncomingMessage, session: SessionData) {
-  await sendText(
+  await sendTextWithConfig(
+    await waConfig(session.restaurantId || restaurantId()),
     msg.from,
     `Your order has already been confirmed! ✅\n\n` +
-    `Send *menu* to place a new order.`
+      `Send *menu* to place a new order.`
   );
 }
 
@@ -697,9 +752,11 @@ const stateHandlers: Record<
 /**
  * Main entry point — called by the webhook for every incoming message.
  */
-export async function handleIncomingMessage(msg: IncomingMessage) {
+export async function handleIncomingMessage(msg: IncomingMessage, ctx?: { restaurantId?: string }) {
+  const ctxRestaurantId = ctx?.restaurantId || restaurantId();
   try {
-    const session = await getOrCreateSession(msg.from);
+    const session = await getOrCreateSessionForRestaurant(ctxRestaurantId, msg.from);
+    session.restaurantId = ctxRestaurantId;
 
     // 1. Check universal commands first (work in any state)
     const handled = await handleUniversalCommand(msg, session);
@@ -709,12 +766,16 @@ export async function handleIncomingMessage(msg: IncomingMessage) {
     if (msg.productIds && msg.productIds.length > 0 && session.state !== WA_STATES.ADDING_QUANTITY) {
       const productId = msg.productIds[0];
       await connectToDatabase();
-      const item = await MenuItem.findById(oid(productId))
+      const item = await MenuItem.findOne({
+        _id: oid(productId),
+        restaurantId: oid(ctxRestaurantId),
+        isActive: true
+      })
         .select("_id name price")
         .lean();
 
       if (item) {
-        await updateSession(msg.from, {
+        await updateSessionForRestaurant(ctxRestaurantId, msg.from, {
           state: WA_STATES.ADDING_QUANTITY,
           selectedItemId: item._id.toString(),
         });
@@ -729,13 +790,14 @@ export async function handleIncomingMessage(msg: IncomingMessage) {
       await handler(msg, session);
     } else {
       console.warn(`[wa-state] unknown state: ${session.state}`);
-      await resetSession(msg.from);
+      await resetSessionForRestaurant(ctxRestaurantId, msg.from);
       await sendWelcome(msg.from);
     }
   } catch (error) {
     console.error("[wa-state] unhandled error:", error);
     try {
-      await sendText(
+      await sendTextWithConfig(
+        await waConfig(ctxRestaurantId),
         msg.from,
         "Oops! Something went wrong. 😔\nPlease send *menu* to start over."
       );
@@ -778,7 +840,7 @@ export async function handlePaymentSuccess(
     });
 
     // 2. Update session
-    await updateSession(session.phone, {
+    await updateSessionForRestaurant(session.restaurantId || restaurantId(), session.phone, {
       state: WA_STATES.ORDER_CONFIRMED,
       paymentStatus: "success",
       orderId: order.id,
@@ -792,11 +854,12 @@ export async function handlePaymentSuccess(
     );
   } catch (err) {
     console.error("[wa-state] handlePaymentSuccess error:", err);
-    await updateSession(session.phone, { paymentStatus: "failed" });
-    await sendText(
+    await updateSessionForRestaurant(session.restaurantId || restaurantId(), session.phone, { paymentStatus: "failed" });
+    await sendTextWithConfig(
+      await waConfig(session.restaurantId || restaurantId()),
       session.phone,
       "⚠️ Your payment was received but we had trouble creating your order. " +
-      "Please contact us and we'll sort it out."
+        "Please contact us and we'll sort it out."
     );
   }
 }

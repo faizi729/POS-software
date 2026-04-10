@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { ok, handleRouteError } from "@/lib/api/response";
-import { getSession } from "@/lib/auth/get-session";
+import { withAuth } from "@/lib/auth/with-auth";
 import { connectToDatabase } from "@/lib/db/connect";
 import { Ingredient } from "@/models";
 import { Types } from "mongoose";
@@ -20,15 +20,15 @@ const ingredientCreateSchema = z.object({
  * GET /api/inventory/ingredients
  * List all ingredients for the restaurant
  */
-export async function GET() {
-  try {
-    const session = await getSession();
+export async function GET(request: NextRequest) {
+  return withAuth<any>(["owner", "manager"], async (_req, _ctx, session) => {
     await connectToDatabase();
 
     const ingredients = await Ingredient.find({
       restaurantId: new Types.ObjectId(session.restaurantId),
       isActive: true
     })
+      .select({ name: 1, unit: 1, currentStock: 1, reorderLevel: 1, costPerUnit: 1, supplier: 1 })
       .sort({ name: 1 })
       .lean();
 
@@ -45,9 +45,7 @@ export async function GET() {
     }));
 
     return ok(data);
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  })(request, {} as any);
 }
 
 /**
@@ -55,8 +53,7 @@ export async function GET() {
  * Create a new ingredient
  */
 export async function POST(request: NextRequest) {
-  try {
-    const session = await getSession();
+  return withAuth<any>(["owner", "manager"], async (request, _ctx, session) => {
     const body = await request.json();
     const payload = ingredientCreateSchema.parse(body);
 
@@ -79,7 +76,5 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     );
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  })(request, {} as any);
 }

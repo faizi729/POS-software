@@ -10,7 +10,6 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getSession();
     const body = await request.json();
-    console.log("[menu/builder/categories][POST] incoming body", body);
     const payload = menuCategorySchema.parse({
       ...body,
       restaurantId: session.restaurantId,
@@ -18,10 +17,8 @@ export async function POST(request: NextRequest) {
     });
 
     const node = await createMenuNode(payload);
-    console.log("[menu/builder/categories][POST] created node", node);
     return ok(node, { status: 201 });
   } catch (error) {
-    console.error("[menu/builder/categories][POST] failed", error);
     return handleRouteError(error);
   }
 }

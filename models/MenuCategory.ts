@@ -24,12 +24,16 @@ const menuCategorySchema = new Schema(
 );
 
 menuCategorySchema.index({ restaurantId: 1, sortOrder: 1 });
-// Ensure slugs are unique within a menu/branch, not globally across the restaurant
-// Using a composite unique index scoped to menuId and parentId allows the same slug
-// to exist in different menus or different branches under the same menu.
+// Slug uniqueness rules:
+// - Builder categories (scoped to a menu tree): unique within (restaurantId, menuId, parentId, slug)
+// - POS root/subcategories (no menuId): unique within (restaurantId, parentId, slug)
+//
+// IMPORTANT: do NOT use a sparse index for the builder uniqueness, otherwise documents where menuId is missing
+// can bypass uniqueness and create duplicates.
+menuCategorySchema.index({ restaurantId: 1, menuId: 1, parentId: 1, slug: 1 }, { unique: true });
 menuCategorySchema.index(
-	{ restaurantId: 1, menuId: 1, parentId: 1, slug: 1 },
-	{ unique: true, sparse: true }
+  { restaurantId: 1, parentId: 1, slug: 1 },
+  { unique: true, partialFilterExpression: { menuId: { $exists: false } } }
 );
 menuCategorySchema.index({ restaurantId: 1, menuId: 1, parentId: 1, sortOrder: 1 });
 

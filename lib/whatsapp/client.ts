@@ -3,18 +3,28 @@
  * Wraps the Meta Graph API for sending messages, buttons, lists, and catalog products.
  */
 
-import { WA_CONFIG } from "./config";
+export type WhatsAppTenantConfig = {
+  token: string;
+  phoneNumberId: string;
+};
 
-const API = `${WA_CONFIG.apiBase}/${WA_CONFIG.phoneNumberId}/messages`;
+const API_BASE = "https://graph.facebook.com/v21.0";
 
-async function send(body: Record<string, any>) {
-  const res = await fetch(API, {
+export async function sendWhatsAppMessage(
+  config: WhatsAppTenantConfig,
+  payload: Record<string, any>
+) {
+  if (!config?.token || !config?.phoneNumberId) {
+    throw new Error("WhatsApp tenant config missing (token/phoneNumberId).");
+  }
+  const api = `${API_BASE}/${config.phoneNumberId}/messages`;
+  const res = await fetch(api, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${WA_CONFIG.token}`,
+      Authorization: `Bearer ${config.token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
 
   if (!res.ok) {
@@ -29,7 +39,15 @@ async function send(body: Record<string, any>) {
 /* ─── Simple text ─── */
 
 export async function sendText(to: string, text: string) {
-  return send({
+  throw new Error("sendText(config, to, text) required");
+}
+
+export async function sendTextWithConfig(
+  config: WhatsAppTenantConfig,
+  to: string,
+  text: string
+) {
+  return sendWhatsAppMessage(config, {
     messaging_product: "whatsapp",
     to,
     type: "text",
@@ -42,6 +60,16 @@ export async function sendText(to: string, text: string) {
 type ReplyButton = { id: string; title: string };
 
 export async function sendButtons(
+  to: string,
+  bodyText: string,
+  buttons: ReplyButton[],
+  headerText?: string
+) {
+  throw new Error("sendButtons(config, ...) required");
+}
+
+export async function sendButtonsWithConfig(
+  config: WhatsAppTenantConfig,
   to: string,
   bodyText: string,
   buttons: ReplyButton[],
@@ -69,7 +97,7 @@ export async function sendButtons(
     message.interactive.header = { type: "text", text: headerText };
   }
 
-  return send(message);
+  return sendWhatsAppMessage(config, message);
 }
 
 /* ─── List message (max 10 rows per section, 10 sections) ─── */
@@ -78,6 +106,17 @@ type ListRow = { id: string; title: string; description?: string };
 type ListSection = { title: string; rows: ListRow[] };
 
 export async function sendList(
+  to: string,
+  bodyText: string,
+  buttonLabel: string,
+  sections: ListSection[],
+  headerText?: string
+) {
+  throw new Error("sendList(config, ...) required");
+}
+
+export async function sendListWithConfig(
+  config: WhatsAppTenantConfig,
   to: string,
   bodyText: string,
   buttonLabel: string,
@@ -109,7 +148,7 @@ export async function sendList(
     message.interactive.header = { type: "text", text: headerText };
   }
 
-  return send(message);
+  return sendWhatsAppMessage(config, message);
 }
 
 /* ─── Single product message (from catalog) ─── */
@@ -120,7 +159,17 @@ export async function sendProduct(
   productRetailerId: string,
   bodyText?: string
 ) {
-  return send({
+  throw new Error("sendProduct(config, ...) required");
+}
+
+export async function sendProductWithConfig(
+  config: WhatsAppTenantConfig,
+  to: string,
+  catalogId: string,
+  productRetailerId: string,
+  bodyText?: string
+) {
+  return sendWhatsAppMessage(config, {
     messaging_product: "whatsapp",
     to,
     type: "interactive",
@@ -149,7 +198,18 @@ export async function sendProductList(
   bodyText: string,
   sections: ProductSection[]
 ) {
-  return send({
+  throw new Error("sendProductList(config, ...) required");
+}
+
+export async function sendProductListWithConfig(
+  config: WhatsAppTenantConfig,
+  to: string,
+  catalogId: string,
+  headerText: string,
+  bodyText: string,
+  sections: ProductSection[]
+) {
+  return sendWhatsAppMessage(config, {
     messaging_product: "whatsapp",
     to,
     type: "interactive",
@@ -173,7 +233,14 @@ export async function sendProductList(
 /* ─── Mark message as read ─── */
 
 export async function markRead(messageId: string) {
-  return send({
+  throw new Error("markRead(config, ...) required");
+}
+
+export async function markReadWithConfig(
+  config: WhatsAppTenantConfig,
+  messageId: string
+) {
+  return sendWhatsAppMessage(config, {
     messaging_product: "whatsapp",
     status: "read",
     message_id: messageId,

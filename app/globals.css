@@ -138,3 +138,14 @@ select {
   90% { opacity: 0.15; }
   100% { transform: translateY(-110vh) rotate(360deg); opacity: 0; }
 }
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@layer utilities {
+  .animate-shimmer {
+    animation: shimmer 1.2s ease-in-out infinite;
+  }
+}

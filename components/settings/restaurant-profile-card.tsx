@@ -14,6 +14,8 @@ type ProfileData = {
   address: string;
   orderPrefix: string;
   serviceChargeEnabled: boolean;
+  openingTime: string;
+  closingTime: string;
 };
 
 export function RestaurantProfileCard({ restaurant }: { restaurant: any }) {
@@ -25,7 +27,9 @@ export function RestaurantProfileCard({ restaurant }: { restaurant: any }) {
     email: restaurant?.contact?.email ?? "",
     address: restaurant?.contact?.address ?? "",
     orderPrefix: restaurant?.settings?.orderPrefix ?? "POS",
-    serviceChargeEnabled: restaurant?.settings?.serviceChargeEnabled ?? false
+    serviceChargeEnabled: restaurant?.settings?.serviceChargeEnabled ?? false,
+    openingTime: restaurant?.settings?.openingTime ?? "09:00",
+    closingTime: restaurant?.settings?.closingTime ?? "23:00"
   });
 
   useEffect(() => {
@@ -35,7 +39,9 @@ export function RestaurantProfileCard({ restaurant }: { restaurant: any }) {
       email: restaurant?.contact?.email ?? "",
       address: restaurant?.contact?.address ?? "",
       orderPrefix: restaurant?.settings?.orderPrefix ?? "POS",
-      serviceChargeEnabled: restaurant?.settings?.serviceChargeEnabled ?? false
+      serviceChargeEnabled: restaurant?.settings?.serviceChargeEnabled ?? false,
+      openingTime: restaurant?.settings?.openingTime ?? "09:00",
+      closingTime: restaurant?.settings?.closingTime ?? "23:00"
     });
   }, [restaurant]);
 
@@ -157,6 +163,26 @@ export function RestaurantProfileCard({ restaurant }: { restaurant: any }) {
             <p className="text-xs text-text-secondary">
               If enabled, a service charge line will appear on bills.
             </p>
+          </div>
+
+          <div className="space-y-2">
+            <p className="label-text">Opening time</p>
+            <Input
+              type="time"
+              value={profile.openingTime}
+              onChange={(e) => update("openingTime", e.target.value)}
+            />
+            <p className="text-xs text-text-secondary">Shown in WhatsApp ordering and ops context.</p>
+          </div>
+
+          <div className="space-y-2">
+            <p className="label-text">Closing time</p>
+            <Input
+              type="time"
+              value={profile.closingTime}
+              onChange={(e) => update("closingTime", e.target.value)}
+            />
+            <p className="text-xs text-text-secondary">Shown in WhatsApp ordering and ops context.</p>
           </div>
         </div>
 

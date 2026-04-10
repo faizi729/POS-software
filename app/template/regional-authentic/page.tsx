@@ -7,14 +7,18 @@ import {
   demoRegionalMenu,
 } from "@/data/demo-regional";
 import RegionalAuthentic from "@/templates/RegionalAuthentic";
+import { getTemplateStorageKey } from "@/lib/templates/storage";
 
 export default function RegionalAuthenticPreview() {
   const [configOverride, setConfigOverride] = useState(demoRegionalConfig);
   const [dataOverride, setDataOverride] = useState(demoRegionalRestaurant);
+  const [restaurantId, setRestaurantId] = useState<string>("");
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("__pos_tpl_regional-authentic");
+      const scopedKey = getTemplateStorageKey("regional-authentic", restaurantId);
+      const legacyKey = getTemplateStorageKey("regional-authentic", null);
+      const raw = localStorage.getItem(scopedKey) || localStorage.getItem(legacyKey);
       if (!raw) return;
       const parsed = JSON.parse(raw) as {
         theme?: Record<string, string>;
@@ -42,6 +46,24 @@ export default function RegionalAuthenticPreview() {
     } catch {
       // ignore parse errors
     }
+  }, [restaurantId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/restaurant/config", { credentials: "include" });
+        if (!res.ok) return;
+        const json = await res.json();
+        const rid = json?.data?.restaurant?.id ?? json?.restaurant?.id ?? "";
+        if (!cancelled && rid) setRestaurantId(String(rid));
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (

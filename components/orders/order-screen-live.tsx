@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Clock, Download, Search, ShoppingCart } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,9 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { formatCurrency } from "@/lib/utils/format";
 import { useOrderStore } from "@/store/order-store";
+import { AnimatedNumber } from "@/components/utils/animated-number";
+import { toast } from "@/lib/toast";
+import { motionTokens } from "@/lib/motion";
 
 /** Returns a human-readable relative time string like "2 min ago".
  * Provide nowTs to avoid SSR/client mismatch; when null/undefined, return empty string. */
@@ -598,6 +602,8 @@ export function OrderScreenLive({
   const [nowTs, setNowTs] = useState<number | null>(null);
   const [activeCategory, setActiveCategory] = useState("All");
   const [query, setQuery] = useState("");
+  const [lastAddedKey, setLastAddedKey] = useState<string | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
   const [itemsPageSize, setItemsPageSize] = useState<10 | 20 | 50>(10);
   const [itemsPage, setItemsPage] = useState(1);
   const [tableNo, setTableNo] = useState("04");
@@ -618,6 +624,31 @@ export function OrderScreenLive({
   }, []);
   const { items, addItem, incrementItem, decrementItem, subtotal, tax, total, reset, setTaxConfig } =
     useOrderStore();
+  function restoreCartItem(entry: (typeof items)[number], qty: number) {
+    const base = {
+      key: entry.key,
+      menuItemId: entry.menuItemId,
+      variantId: entry.variantId,
+      name: entry.name,
+      price: entry.price,
+      notes: entry.notes ?? ""
+    };
+    for (let i = 0; i < Math.max(1, qty); i += 1) {
+      addItem(base);
+    }
+  }
+  const [cartPulse, setCartPulse] = useState(0);
+  const prevCartSigRef = useRef<string>("");
+  const [selectedCartKey, setSelectedCartKey] = useState<string | null>(null);
+
+  // Pulse the cart on any cart change (add/remove/qty)
+  useEffect(() => {
+    const sig = items.map((i) => `${i.key}:${i.quantity}`).join("|");
+    if (prevCartSigRef.current !== "" && sig !== prevCartSigRef.current) {
+      setCartPulse((v) => v + 1);
+    }
+    prevCartSigRef.current = sig;
+  }, [items, prevCartSigRef]);
 
   // Tick every 30s so relative times stay fresh
   const [, setTick] = useState(0);
@@ -693,6 +724,58 @@ export function OrderScreenLive({
     return filteredItems.slice(itemsStartIndex, itemsStartIndex + itemsPageSize);
   }, [filteredItems, isAllCategory, itemsPageSize, itemsStartIndex]);
 
+  // Power-user shortcuts (POS)
+  useEffect(() => {
+    function isTypingTarget(target: EventTarget | null) {
+      const el = target as HTMLElement | null;
+      if (!el) return false;
+      const tag = el.tagName?.toLowerCase();
+      return tag === "input" || tag === "textarea" || (el as any).isContentEditable;
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      // "/" -> focus menu search
+      if (e.key === "/" && !isTypingTarget(e.target)) {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+
+      // Ctrl/Cmd + Enter -> checkout
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        void placeOrderAndPayment();
+        return;
+      }
+
+      // Enter -> add first visible item (when not typing)
+      if (e.key === "Enter" && !isTypingTarget(e.target)) {
+        if (visibleItems[0]) {
+          e.preventDefault();
+          const first = visibleItems[0];
+          if (first.variants?.length) openVariantChooser(first);
+          else {
+            setLastAddedKey(first.id);
+            addItem({ key: first.id, menuItemId: first.id, name: first.name, price: first.price, notes: "" });
+            toast.success("Added to cart", { message: first.name, durationMs: 2200 });
+          }
+        }
+        return;
+      }
+
+      // +/- -> adjust quantity for selected cart item
+      if ((e.key === "+" || e.key === "=" || e.key === "-") && !isTypingTarget(e.target)) {
+        if (!selectedCartKey) return;
+        e.preventDefault();
+        if (e.key === "-") decrementItem(selectedCartKey);
+        else incrementItem(selectedCartKey);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [addItem, decrementItem, incrementItem, placeOrderAndPayment, selectedCartKey, visibleItems]);
+
   // Indicate which items are already in the cart
   const itemsInCart = useMemo(() => {
     const set = new Set<string>();
@@ -724,7 +807,9 @@ export function OrderScreenLive({
   function openVariantChooser(item: OrderMenuItem) {
     const variants = (item.variants ?? []).filter((entry) => entry);
     if (variants.length === 0) {
+      setLastAddedKey(item.id);
       addItem({ key: item.id, menuItemId: item.id, name: item.name, price: item.price, notes: "" });
+      toast.success("Added to cart", { message: item.name, durationMs: 2200 });
       return;
     }
 
@@ -755,6 +840,8 @@ export function OrderScreenLive({
       price: effectivePrice,
       notes
     });
+    setLastAddedKey(key);
+    toast.success("Added to cart", { message: displayName, durationMs: 2200 });
 
     setVariantModalOpen(false);
     setVariantTargetItem(null);
@@ -799,7 +886,7 @@ export function OrderScreenLive({
         html = renderClonedReceiptHtml({
           layout: template.layout,
           order: pseudoOrder,
-          restaurantName: restaurant?.name ?? "Restaurant POS",
+          restaurantName: restaurant?.name ?? "Rasoio",
           centerAlignAll: true
         });
         if (!html) {
@@ -807,7 +894,7 @@ export function OrderScreenLive({
         }
       } else {
         html = buildBillHtml({
-          restaurantName: restaurant?.name ?? "Restaurant POS",
+          restaurantName: restaurant?.name ?? "Rasoio",
           orderLabel,
           items: items.map((item) => ({
             name: item.name,
@@ -822,7 +909,7 @@ export function OrderScreenLive({
       }
     } catch {
       html = buildBillHtml({
-        restaurantName: restaurant?.name ?? "Restaurant POS",
+        restaurantName: restaurant?.name ?? "Rasoio",
         orderLabel,
         items: items.map((item) => ({
           name: item.name,
@@ -890,80 +977,104 @@ export function OrderScreenLive({
       return;
     }
 
-    const orderResponse = await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        channel: "pos",
-        type: orderType,
-        status: "draft",
-        tableNo: orderType === "dine_in" ? tableNo : "",
-        customer: { name: "Walk-in", phone: "" },
-        items: items.map((item) => ({
-          menuItemId: item.menuItemId,
-          nameSnapshot: item.name,
-          priceSnapshot: item.price,
-          quantity: item.quantity,
-          notes: item.notes,
-          lineTotal: item.price * item.quantity
-        })),
-        pricing: {
-          subtotal,
-          tax,
-          serviceCharge: 0,
-          discount: 0,
-          grandTotal: total
-        },
-        paymentStatus: checkoutPaymentStatus
-      })
-    });
-
-    const orderPayload = (await orderResponse.json()) as { data: { id: string } };
-
-    // By default, immediately submit the order to "placed"
-    await fetch(`/api/orders/${orderPayload.data.id}/submit`, {
-      method: "POST"
-    });
-
-    if (checkoutPaymentStatus === "paid") {
-      await fetch(`/api/orders/${orderPayload.data.id}/payments`, {
+    try {
+      const orderResponse = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          amount: total,
-          method: paymentMethod,
-          status: "completed",
-          reference: `POS-${Date.now()}`,
-          orderId: orderPayload.data.id
+          channel: "pos",
+          type: orderType,
+          status: "draft",
+          tableNo: orderType === "dine_in" ? tableNo : "",
+          customer: { name: "Walk-in", phone: "" },
+          items: items.map((item) => ({
+            menuItemId: item.menuItemId,
+            nameSnapshot: item.name,
+            priceSnapshot: item.price,
+            quantity: item.quantity,
+            notes: item.notes,
+            lineTotal: item.price * item.quantity
+          })),
+          pricing: {
+            subtotal,
+            tax,
+            serviceCharge: 0,
+            discount: 0,
+            grandTotal: total
+          },
+          paymentStatus: checkoutPaymentStatus
         })
       });
-    }
 
-    reset();
-    // Refresh list without full route reload
-    try {
-      const res = await fetch("/api/orders", { cache: "no-store" });
-      const json = await res.json();
-      if (json?.data?.orders) {
-        setLiveOrders(json.data.orders as RecentOrder[]);
-      } else {
+      if (!orderResponse.ok) {
+        const payload = await orderResponse.json().catch(() => ({} as any));
+        throw new Error(payload?.error || "Failed to create order");
+      }
+
+      const orderPayload = (await orderResponse.json()) as { data: { id: string } };
+
+      // By default, immediately submit the order to "placed"
+      const submitRes = await fetch(`/api/orders/${orderPayload.data.id}/submit`, { method: "POST" });
+      if (!submitRes.ok) {
+        throw new Error("Order created but submit failed");
+      }
+
+      if (checkoutPaymentStatus === "paid") {
+        const payRes = await fetch(`/api/orders/${orderPayload.data.id}/payments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: total,
+            method: paymentMethod,
+            status: "completed",
+            reference: `POS-${Date.now()}`,
+            orderId: orderPayload.data.id
+          })
+        });
+        if (!payRes.ok) {
+          throw new Error("Payment failed");
+        }
+      }
+
+      toast.success("Order placed", {
+        message: checkoutPaymentStatus === "paid" ? "Payment captured" : "Saved as unpaid",
+        durationMs: 2600
+      });
+
+      reset();
+      // Refresh list without full route reload
+      try {
+        const res = await fetch("/api/orders", { cache: "no-store" });
+        const json = await res.json();
+        if (json?.data?.orders) {
+          setLiveOrders(json.data.orders as RecentOrder[]);
+        } else {
+          startTransition(() => router.refresh());
+        }
+      } catch {
         startTransition(() => router.refresh());
       }
-    } catch {
-      startTransition(() => router.refresh());
+    } catch (err: any) {
+      toast.error("Couldn’t place order", { message: err?.message || "Try again", durationMs: 3400 });
     }
   }
 
   async function saveOrder(orderId: string) {
-    await fetch(`/api/orders/${orderId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tableNo: editingTableNo,
-        status: editingStatus,
-        paymentStatus: editingPaymentStatus
-      })
-    });
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tableNo: editingTableNo,
+          status: editingStatus,
+          paymentStatus: editingPaymentStatus
+        })
+      });
+      if (!res.ok) throw new Error("Update failed");
+      toast.success("Order updated", { durationMs: 2200 });
+    } catch (err: any) {
+      toast.error("Couldn’t update order", { message: err?.message || "Try again", durationMs: 3400 });
+    }
 
     setEditingOrderId(null);
     setEditingTableNo("");
@@ -973,7 +1084,13 @@ export function OrderScreenLive({
   }
 
   async function removeOrder(orderId: string) {
-    await fetch(`/api/orders/${orderId}`, { method: "DELETE" });
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+      toast.info("Order deleted", { durationMs: 2400 });
+    } catch (err: any) {
+      toast.error("Couldn’t delete order", { message: err?.message || "Try again", durationMs: 3400 });
+    }
     if (editingOrderId === orderId) {
       setEditingOrderId(null);
       setEditingTableNo("");
@@ -1154,9 +1271,10 @@ export function OrderScreenLive({
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
                 <Input
                   className="h-12 rounded-2xl bg-white pl-11"
-                placeholder="Search menu..."
+                  placeholder="Search menu... (press /)"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
+                  ref={searchRef}
                 />
               </div>
             <div className="flex items-center gap-2 rounded-2xl border border-border-subtle bg-bg-elevated p-2 md:hidden">
@@ -1175,20 +1293,41 @@ export function OrderScreenLive({
           <Card className="border border-border-subtle bg-bg-elevated">
             <CardContent className="space-y-4 p-4">
             <div className="flex flex-wrap gap-2">
-              {["All", ...categories.map((item) => item.name)].map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setActiveCategory(tab)}
-                  className={
-                    activeCategory === tab
-                        ? "cursor-pointer rounded-full bg-text-primary px-4 py-2 text-sm font-semibold text-white"
-                        : "cursor-pointer rounded-full border border-border-subtle bg-bg-elevated px-4 py-2 text-sm font-medium text-text-secondary transition hover:border-border-strong hover:text-text-primary"
-                  }
-                >
-                  {tab}
-                </button>
-              ))}
+              {[
+                "All",
+                ...Array.from(
+                  new Set(
+                    categories
+                      .map((item) => item.name)
+                      .filter((name) => typeof name === "string" && name.trim() !== "")
+                  )
+                )
+              ].map((tab) => {
+                const active = activeCategory === tab;
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setActiveCategory(tab)}
+                    className={[
+                      "relative isolate cursor-pointer rounded-full px-4 py-2 text-sm font-semibold outline-none transition-[transform,color,border-color,background-color,box-shadow] duration-200 ease-out",
+                      "focus-visible:ring-4 focus-visible:ring-accent-primary/12",
+                      active
+                        ? "text-white"
+                        : "border border-border-subtle bg-bg-elevated text-text-secondary hover:border-border-strong hover:text-text-primary hover:bg-white"
+                    ].join(" ")}
+                  >
+                    {active ? (
+                      <motion.span
+                        layoutId="posActiveCategoryPill"
+                        className="absolute inset-0 -z-10 rounded-full bg-text-primary shadow-[0_10px_26px_rgba(28,26,23,0.14)]"
+                        transition={{ duration: motionTokens.durations.slow, ease: motionTokens.easing }}
+                      />
+                    ) : null}
+                    {tab}
+                  </button>
+                );
+              })}
             </div>
 
               {isAllCategory ? (
@@ -1245,15 +1384,32 @@ export function OrderScreenLive({
                     openVariantChooser(item);
                     return;
                   }
+                  setLastAddedKey(item.id);
                   addItem({ key: item.id, menuItemId: item.id, name: item.name, price: item.price, notes: "" });
+                  toast.success("Added to cart", { message: item.name, durationMs: 2200 });
                 }}
                 className={[
-                  "group cursor-pointer overflow-hidden rounded-[24px] border p-5 text-left shadow-soft transition",
+                  "group relative cursor-pointer overflow-hidden rounded-[24px] border p-5 text-left shadow-soft transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out will-change-transform active:scale-[0.99]",
                   itemsInCart.has(item.id)
                     ? "border-accent-primary bg-accent-primary/10 hover:bg-accent-primary/20"
-                    : "border-border-subtle bg-bg-elevated hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_42px_rgba(28,26,23,0.1)]"
+                    : "border-border-subtle bg-bg-elevated hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_42px_rgba(28,26,23,0.10)]"
                 ].join(" ")}
               >
+                <AnimatePresence>
+                  {lastAddedKey === item.id ? (
+                    <motion.div
+                      key="flash"
+                      className="pointer-events-none absolute inset-0"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: motionTokens.durations.normal, ease: motionTokens.easing }}
+                      onAnimationComplete={() => setLastAddedKey(null)}
+                    >
+                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(15,118,110,0.16),transparent_55%)]" />
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <Badge variant="neutral">{item.tags[0] ?? "Menu item"}</Badge>
@@ -1295,7 +1451,20 @@ export function OrderScreenLive({
 
         {/* RIGHT: Order details */}
         <aside className="xl:sticky xl:top-6 xl:self-start">
-          <Card className="overflow-hidden border border-border-subtle bg-bg-elevated shadow-[0_24px_70px_rgba(28,26,23,0.1)]">
+          <motion.div
+            key={cartPulse}
+            initial={{ boxShadow: "0 24px 70px rgba(28,26,23,0.10)" }}
+            animate={{
+              boxShadow: [
+                "0 24px 70px rgba(28,26,23,0.10)",
+                "0 30px 86px rgba(15,118,110,0.18)",
+                "0 24px 70px rgba(28,26,23,0.10)"
+              ]
+            }}
+            transition={{ duration: motionTokens.durations.slow, ease: motionTokens.easing }}
+            className="rounded-2xl"
+          >
+          <Card className="overflow-hidden border border-border-subtle bg-bg-elevated">
             <CardHeader className="border-b border-border-subtle bg-white">
               <p className="label-text">Order details</p>
               <CardTitle className="mt-2 text-[1.7rem] leading-9 tracking-[-0.04em] text-text-primary">
@@ -1364,53 +1533,130 @@ export function OrderScreenLive({
                     </p>
                   </div>
                 ) : (
-                  items.map((item) => (
-                    <div
-                      key={item.key}
-                      className="rounded-[22px] border border-border-subtle bg-white p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-text-primary">{item.name}</p>
-                          <p className="text-text-secondary">{formatCurrency(item.price)} each</p>
-                          {item.notes ? (
-                            <p className="mt-1 text-xs text-text-muted">{item.notes}</p>
-                          ) : null}
+                  <AnimatePresence initial={false} mode="popLayout">
+                    {items.map((item) => (
+                      <motion.div
+                        key={item.key}
+                        layout
+                        initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.98, height: 0, marginTop: 0 }}
+                        transition={{ duration: motionTokens.durations.normal, ease: motionTokens.easing }}
+                        onClick={() => setSelectedCartKey(item.key)}
+                        className={[
+                          "rounded-[22px] border bg-white p-4 shadow-[0_10px_26px_rgba(28,26,23,0.06)] transition-[border-color,box-shadow] duration-200",
+                          selectedCartKey === item.key
+                            ? "border-accent-primary/55 shadow-[0_18px_52px_rgba(15,118,110,0.12)]"
+                            : "border-border-subtle hover:border-border-strong"
+                        ].join(" ")}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-text-primary">{item.name}</p>
+                            <p className="text-text-secondary">
+                              <AnimatedNumber
+                                value={item.price}
+                                format={(n) => formatCurrency(n)}
+                                durationMs={140}
+                                className="tabular-nums"
+                              />{" "}
+                              each
+                            </p>
+                            {item.notes ? <p className="mt-1 text-xs text-text-muted">{item.notes}</p> : null}
+                          </div>
+                          <AnimatedNumber
+                            value={item.price * item.quantity}
+                            format={(n) => formatCurrency(n)}
+                            durationMs={160}
+                            className="font-semibold text-text-primary tabular-nums"
+                          />
                         </div>
-                        <p className="font-semibold text-text-primary">
-                          {formatCurrency(item.price * item.quantity)}
-                        </p>
-                      </div>
-                      <div className="mt-4 flex items-center gap-2">
-                        <Button size="icon" variant="ghost" className="rounded-full" onClick={() => decrementItem(item.key)}>
-                          -
-                        </Button>
-                        <div className="flex h-9 min-w-12 items-center justify-center rounded-full border border-border-subtle bg-bg-surface px-3 text-sm font-semibold text-text-primary">
-                          {item.quantity}
+                        <div className="mt-4 flex items-center gap-2">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="rounded-full"
+                            onClick={() => {
+                              setSelectedCartKey(item.key);
+                              const willRemove = item.quantity <= 1;
+                              decrementItem(item.key);
+                              if (willRemove) {
+                                toast.info("Removed from cart", {
+                                  message: item.name,
+                                  durationMs: 3200,
+                                  action: {
+                                    label: "Undo",
+                                    onClick: () => restoreCartItem(item, 1)
+                                  }
+                                });
+                              } else {
+                                toast.info("Quantity updated", { message: item.name, durationMs: 2000 });
+                              }
+                            }}
+                            aria-label={`Decrease ${item.name}`}
+                          >
+                            -
+                          </Button>
+                          <div className="relative flex h-9 min-w-12 items-center justify-center overflow-hidden rounded-full border border-border-subtle bg-bg-surface px-3 text-sm font-semibold text-text-primary">
+                            <AnimatePresence mode="wait" initial={false}>
+                              <motion.span
+                                key={item.quantity}
+                                initial={{ y: -8, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                exit={{ y: 8, opacity: 0 }}
+                                transition={{ duration: motionTokens.durations.fast, ease: motionTokens.easing }}
+                              >
+                                {item.quantity}
+                              </motion.span>
+                            </AnimatePresence>
+                          </div>
+                          <Button
+                            size="icon"
+                            variant="secondary"
+                            className="rounded-full"
+                            onClick={() => {
+                              setSelectedCartKey(item.key);
+                              incrementItem(item.key);
+                              toast.info("Quantity updated", { message: item.name, durationMs: 2000 });
+                            }}
+                            aria-label={`Increase ${item.name}`}
+                          >
+                            +
+                          </Button>
                         </div>
-                        <Button size="icon" variant="secondary" className="rounded-full" onClick={() => incrementItem(item.key)}>
-                          +
-                        </Button>
-                      </div>
-                    </div>
-                  ))
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
                 )}
               </div>
 
               <div className="rounded-[22px] border border-border-subtle bg-bg-surface p-4">
                 <div className="flex items-center justify-between text-sm text-text-secondary">
                   <span>Subtotal</span>
-                  <span className="font-medium text-text-primary">{formatCurrency(subtotal)}</span>
+                  <AnimatedNumber
+                    value={subtotal}
+                    format={(n) => formatCurrency(n)}
+                    durationMs={180}
+                    className="font-medium text-text-primary tabular-nums"
+                  />
                 </div>
                 <div className="mt-2 flex items-center justify-between text-sm text-text-secondary">
                   <span>Tax</span>
-                  <span className="font-medium text-text-primary">{formatCurrency(tax)}</span>
+                  <AnimatedNumber
+                    value={tax}
+                    format={(n) => formatCurrency(n)}
+                    durationMs={180}
+                    className="font-medium text-text-primary tabular-nums"
+                  />
                 </div>
                 <div className="mt-4 flex items-center justify-between border-t border-border-subtle pt-4">
                   <span className="text-base font-semibold text-text-primary">Total</span>
-                  <span className="text-xl font-bold tracking-[-0.02em] text-text-primary">
-                    {formatCurrency(total)}
-                  </span>
+                  <AnimatedNumber
+                    value={total}
+                    format={(n) => formatCurrency(n)}
+                    durationMs={220}
+                    className="text-xl font-bold tracking-[-0.02em] text-text-primary tabular-nums"
+                  />
                 </div>
               </div>
 
@@ -1466,6 +1712,7 @@ export function OrderScreenLive({
               </div>
             </CardContent>
           </Card>
+          </motion.div>
         </aside>
       </div>
 

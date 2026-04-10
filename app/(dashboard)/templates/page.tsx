@@ -173,14 +173,14 @@ export default function TemplatesGalleryPage() {
               {/* Actions */}
               <div className="flex gap-2">
                 <Link
-                  href={{ pathname: "/templates/[slug]", query: { slug: tpl.slug } }}
+                  href={`/templates/${tpl.slug}` as any}
                   className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-accent-primary px-4 py-2.5 text-xs font-semibold text-white transition-all duration-200 hover:bg-accent-primary-hover"
                 >
                   <Palette className="h-3.5 w-3.5" />
                   Select &amp; Customize
                 </Link>
                 <Link
-                  href={{ pathname: "/template/[slug]", query: { slug: tpl.slug } }}
+                  href={`/template/${tpl.slug}` as any}
                   target="_blank"
                   className="flex items-center justify-center rounded-xl border border-border-subtle px-3 py-2.5 text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary"
                   title="Preview"

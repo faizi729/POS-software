@@ -7,7 +7,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { WA_CONFIG } from "@/lib/whatsapp/config";
-import { markRead } from "@/lib/whatsapp/client";
+import { connectToDatabase } from "@/lib/db/connect";
+import { Restaurant } from "@/models";
+import { fail } from "@/lib/api/response";
+import { getClientIp, rateLimit } from "@/lib/middleware/rate-limit";
+import { resolveRestaurantIdByPhoneNumberId } from "@/lib/whatsapp/tenant-router";
 import {
   handleIncomingMessage,
   type IncomingMessage,
@@ -22,7 +26,19 @@ export async function GET(request: NextRequest) {
   const token = params.get("hub.verify_token");
   const challenge = params.get("hub.challenge");
 
-  if (mode === "subscribe" && token === WA_CONFIG.verifyToken) {
+  // Multi-tenant: allow verification against any restaurant's saved verifyToken (fallback to env)
+  let okToken = token === WA_CONFIG.verifyToken;
+  if (!okToken && token) {
+    try {
+      await connectToDatabase();
+      const exists = await Restaurant.exists({ "settings.whatsapp.verifyToken": token });
+      okToken = Boolean(exists);
+    } catch {
+      okToken = token === WA_CONFIG.verifyToken;
+    }
+  }
+
+  if (mode === "subscribe" && okToken) {
     console.log("[whatsapp] webhook verified ✓");
     return new NextResponse(challenge, { status: 200 });
   }
@@ -35,6 +51,18 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const rl = await rateLimit({
+      request,
+      keyParts: ["wa-webhook", getClientIp(request)],
+      limit: 120,
+      windowMs: 60_000,
+      onHit: () => console.warn("[rate-limit] /api/whatsapp/webhook")
+    });
+    if (!rl.ok) {
+      // Return 200 to Meta to avoid retries, but log it.
+      return new NextResponse("OK", { status: 200 });
+    }
+
     const body = await request.json();
 
     // WhatsApp sends notifications even for status updates.
@@ -48,17 +76,21 @@ export async function POST(request: NextRequest) {
         const value = change?.value;
         if (!value || value.messaging_product !== "whatsapp") continue;
 
+        const phoneNumberId = value?.metadata?.phone_number_id ?? "";
+        const rid =
+          (phoneNumberId ? await resolveRestaurantIdByPhoneNumberId(String(phoneNumberId)) : null) ??
+          WA_CONFIG.restaurantId;
+
         const messages = value.messages ?? [];
 
         for (const raw of messages) {
           const parsed = parseMessage(raw);
           if (!parsed) continue;
 
-          // Mark as read immediately (non-blocking)
-          markRead(parsed.messageId).catch(() => {});
+          // TODO: markRead now requires tenant WA config; implement phone_number_id -> restaurant mapping first.
 
           // Handle in background — webhook must respond fast
-          handleIncomingMessage(parsed).catch((err) =>
+          handleIncomingMessage(parsed, { restaurantId: rid }).catch((err) =>
             console.error("[whatsapp] message handler error:", err)
           );
         }

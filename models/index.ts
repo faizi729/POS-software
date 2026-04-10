@@ -15,5 +15,7 @@ export * from "./Payment";
 export * from "./Recipe";
 export * from "./Restaurant";
 export * from "./User";
+export * from "./PlatformUser";
+export * from "./AuditLog";
 export * from "./WaSession";
 export * from "./ReceiptTemplate";

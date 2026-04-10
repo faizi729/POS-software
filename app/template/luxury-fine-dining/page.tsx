@@ -7,14 +7,18 @@ import {
   demoMenuData,
 } from "@/data/demo-luxury";
 import LuxuryFineDining from "@/templates/LuxuryFineDining";
+import { getTemplateStorageKey } from "@/lib/templates/storage";
 
 export default function LuxuryFineDiningPreview() {
   const [configOverride, setConfigOverride] = useState(demoConfig);
   const [dataOverride, setDataOverride] = useState(demoRestaurantData);
+  const [restaurantId, setRestaurantId] = useState<string>("");
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("__pos_tpl_luxury-fine-dining");
+      const scopedKey = getTemplateStorageKey("luxury-fine-dining", restaurantId);
+      const legacyKey = getTemplateStorageKey("luxury-fine-dining", null);
+      const raw = localStorage.getItem(scopedKey) || localStorage.getItem(legacyKey);
       if (!raw) return;
       const parsed = JSON.parse(raw) as {
         theme?: Record<string, string>;
@@ -45,6 +49,24 @@ export default function LuxuryFineDiningPreview() {
     } catch {
       // ignore parse errors
     }
+  }, [restaurantId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/restaurant/config", { credentials: "include" });
+        if (!res.ok) return;
+        const json = await res.json();
+        const rid = json?.data?.restaurant?.id ?? json?.restaurant?.id ?? "";
+        if (!cancelled && rid) setRestaurantId(String(rid));
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (

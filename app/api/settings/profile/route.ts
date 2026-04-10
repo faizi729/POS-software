@@ -1,15 +1,26 @@
 import { NextRequest } from "next/server";
 
 import { ok, handleRouteError } from "@/lib/api/response";
-import { getSession } from "@/lib/auth/get-session";
+import { withAuth } from "@/lib/auth/with-auth";
 import { connectToDatabase } from "@/lib/db/connect";
 import { Restaurant } from "@/models";
 
-export async function GET() {
-  try {
-    const session = await getSession();
+export async function GET(request: NextRequest) {
+  return withAuth<any>(["owner", "manager"], async (_req, _ctx, session) => {
     await connectToDatabase();
-    const restaurant = await Restaurant.findById(session.restaurantId).lean();
+    const restaurant = await Restaurant.findOne({ _id: session.restaurantId })
+      .select({
+        name: 1,
+        slug: 1,
+        contact: 1,
+        currency: 1,
+        timezone: 1,
+        "settings.orderPrefix": 1,
+        "settings.serviceChargeEnabled": 1,
+        "settings.openingTime": 1,
+        "settings.closingTime": 1
+      })
+      .lean();
 
     if (!restaurant) {
       return ok({ error: "Restaurant not found." }, { status: 404 });
@@ -24,16 +35,15 @@ export async function GET() {
       currency: restaurant.currency ?? "INR",
       timezone: restaurant.timezone ?? "Asia/Kolkata",
       orderPrefix: restaurant.settings?.orderPrefix ?? "POS",
-      serviceChargeEnabled: restaurant.settings?.serviceChargeEnabled ?? false
+      serviceChargeEnabled: restaurant.settings?.serviceChargeEnabled ?? false,
+      openingTime: restaurant.settings?.openingTime ?? "09:00",
+      closingTime: restaurant.settings?.closingTime ?? "23:00"
     });
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  })(request, {} as any);
 }
 
 export async function PATCH(request: NextRequest) {
-  try {
-    const session = await getSession();
+  return withAuth<any>(["owner", "manager"], async (request, _ctx, session) => {
     await connectToDatabase();
 
     const body = await request.json();
@@ -57,12 +67,28 @@ export async function PATCH(request: NextRequest) {
     if (typeof body.serviceChargeEnabled === "boolean") {
       update["settings.serviceChargeEnabled"] = body.serviceChargeEnabled;
     }
+    if (typeof body.openingTime === "string") {
+      update["settings.openingTime"] = body.openingTime.trim();
+    }
+    if (typeof body.closingTime === "string") {
+      update["settings.closingTime"] = body.closingTime.trim();
+    }
 
     const restaurant = await Restaurant.findByIdAndUpdate(
       session.restaurantId,
       { $set: update },
       { new: true }
-    ).lean();
+    )
+      .select({
+        name: 1,
+        slug: 1,
+        contact: 1,
+        "settings.orderPrefix": 1,
+        "settings.serviceChargeEnabled": 1,
+        "settings.openingTime": 1,
+        "settings.closingTime": 1
+      })
+      .lean();
 
     if (!restaurant) {
       return ok({ error: "Restaurant not found." }, { status: 404 });
@@ -75,9 +101,9 @@ export async function PATCH(request: NextRequest) {
       email: restaurant.contact?.email ?? "",
       address: restaurant.contact?.address ?? "",
       orderPrefix: restaurant.settings?.orderPrefix ?? "POS",
-      serviceChargeEnabled: restaurant.settings?.serviceChargeEnabled ?? false
+      serviceChargeEnabled: restaurant.settings?.serviceChargeEnabled ?? false,
+      openingTime: restaurant.settings?.openingTime ?? "09:00",
+      closingTime: restaurant.settings?.closingTime ?? "23:00"
     });
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  })(request, {} as any);
 }

@@ -44,7 +44,14 @@ export async function getSalesReport(params: {
   const orders = await Order.find({
     restaurantId: rid,
     createdAt: { $gte: params.startDate, $lte: params.endDate }
-  }).lean();
+  })
+    .select({
+      status: 1,
+      type: 1,
+      pricing: 1,
+      createdAt: 1
+    })
+    .lean();
 
   // ── optionally filter by payment method ──
   let filteredOrders = orders;
@@ -52,8 +59,11 @@ export async function getSalesReport(params: {
     const payments = await Payment.find({
       restaurantId: rid,
       method: params.paymentMethod,
-      status: "completed"
-    }).lean();
+      status: "completed",
+      paidAt: { $gte: params.startDate, $lte: params.endDate }
+    })
+      .select({ orderId: 1 })
+      .lean();
     const paidIds = new Set(payments.map((p) => p.orderId.toString()));
     filteredOrders = orders.filter((o) => paidIds.has((o as any)._id.toString()));
   }
@@ -146,7 +156,9 @@ export async function getTaxReport(params: {
     restaurantId: rid,
     status: { $ne: "cancelled" },
     createdAt: { $gte: startDate, $lte: endDate }
-  }).lean();
+  })
+    .select({ pricing: 1, createdAt: 1 })
+    .lean();
 
   const monthMap = new Map<string, TaxMonthRow>();
 
@@ -213,7 +225,9 @@ export async function getItemPerformance(params: {
     restaurantId: rid,
     status: { $ne: "cancelled" },
     createdAt: { $gte: params.startDate, $lte: params.endDate }
-  }).lean();
+  })
+    .select({ items: 1 })
+    .lean();
 
   const itemMap = new Map<string, ItemPerformanceRow>();
 
@@ -273,7 +287,9 @@ export async function getHeatmapData(params: {
     restaurantId: rid,
     status: { $ne: "cancelled" },
     createdAt: { $gte: startDate, $lte: endDate }
-  }).lean();
+  })
+    .select({ createdAt: 1, "pricing.grandTotal": 1, pricing: 1 })
+    .lean();
 
   // bucket: "date|hour" → cell
   const map = new Map<string, HeatmapCell>();
@@ -339,7 +355,9 @@ export async function getSmartInsights(params: {
   const recentOrders = await Order.find({
     restaurantId: rid,
     createdAt: { $gte: yesterdayStart, $lte: todayEnd }
-  }).lean();
+  })
+    .select({ createdAt: 1, status: 1, type: 1, pricing: 1, items: 1 })
+    .lean();
 
   const todayOrders = recentOrders.filter(
     (o) => new Date(o.createdAt as unknown as Date) >= todayStart

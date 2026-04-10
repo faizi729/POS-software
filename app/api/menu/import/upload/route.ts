@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import { ok } from "@/lib/api/response";
 import { extractMenuHybrid } from "@/lib/ocr/menu-extraction-engine";
+import { validateUploads } from "@/lib/middleware/upload-validate";
+import { fail } from "@/lib/api/response";
+import { getClientIp, rateLimit } from "@/lib/middleware/rate-limit";
+import { assertRole, requireSession } from "@/lib/auth/guards";
 
 async function callOcrSpace(params: { apiKey: string; file: File }) {
   const form = new FormData();
@@ -21,6 +25,18 @@ async function callOcrSpace(params: { apiKey: string; file: File }) {
 }
 
 export async function POST(request: NextRequest) {
+  const session = await requireSession();
+  assertRole(session, ["owner", "manager"]);
+
+  const rl = await rateLimit({
+    request,
+    keyParts: ["ocr-menu-import", session.restaurantId, getClientIp(request)],
+    limit: 30,
+    windowMs: 60_000,
+    onHit: () => console.warn("[rate-limit] /api/menu/import/upload")
+  });
+  if (!rl.ok) return fail("Too many requests. Try again soon.", 429);
+
   const apiKey = process.env.OCR_SPACE_API_KEY;
   if (!apiKey) {
     return ok({ error: "OCR_SPACE_API_KEY missing" }, { status: 400 });
@@ -28,6 +44,9 @@ export async function POST(request: NextRequest) {
   const form = await request.formData();
   const files = Array.from(form.getAll("files") || []).filter((f): f is File => f instanceof File);
   if (!files.length) return ok({ error: "No files uploaded (field: files[])" }, { status: 400 });
+
+  const valid = validateUploads({ files, maxFiles: 10, maxBytesPerFile: 5 * 1024 * 1024 });
+  if (!valid.ok) return fail(valid.error, 400);
 
   // OCR all files and merge text
   const texts = await Promise.all(files.map((file) => callOcrSpace({ apiKey, file }).catch(() => "")));

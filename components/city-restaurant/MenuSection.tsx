@@ -1,19 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type {
   CityRestaurantSectionProps,
-  MenuCategory,
 } from "@/types/city-restaurant-template";
 
-const CATEGORIES: { key: MenuCategory | "all"; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "starters", label: "Starters" },
-  { key: "mains", label: "Mains" },
-  { key: "desserts", label: "Desserts" },
-  { key: "drinks", label: "Drinks" },
-];
+type PublicCategory = { id: string; name: string; slug: string };
 
 /* ══════════════════════════════════════════════════════════════════════════════
    MenuSection — Category filters + responsive grid
@@ -22,12 +15,99 @@ export default function MenuSection({
   menuData,
   theme,
 }: CityRestaurantSectionProps) {
-  const [active, setActive] = useState<MenuCategory | "all">("all");
+  const [categories, setCategories] = useState<PublicCategory[]>([]);
+  const [activeCategoryId, setActiveCategoryId] = useState<string>("all");
+  const [items, setItems] = useState(menuData.items);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [source, setSource] = useState<"public" | "demo">("demo");
 
-  const filtered =
-    active === "all"
-      ? menuData.items
-      : menuData.items.filter((item) => item.category === active);
+  const activeLabel = useMemo(() => {
+    if (activeCategoryId === "all") return "All";
+    return categories.find((c) => c.id === activeCategoryId)?.name ?? "Category";
+  }, [activeCategoryId, categories]);
+
+  async function loadPage(opts?: { reset?: boolean }) {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const limit = 20;
+      const params = new URLSearchParams();
+      params.set("limit", String(limit));
+      if (activeCategoryId !== "all") params.set("categoryId", activeCategoryId);
+      if (!opts?.reset && cursor) params.set("cursor", cursor);
+
+      const res = await fetch(`/api/public/menu/items?${params.toString()}`, {
+        method: "GET",
+        credentials: "include",
+        headers: { "Cache-Control": "no-cache" },
+      });
+      if (!res.ok) return;
+      const json = await res.json();
+      const dataItems = json?.data?.items ?? json?.items ?? [];
+      const page = json?.data?.page ?? json?.page ?? {};
+
+      // If tenant has no items, keep demo to avoid a blank section.
+      if (!Array.isArray(dataItems) || dataItems.length === 0) return;
+
+      const mapped = dataItems.map((it: any) => ({
+        id: it.id,
+        name: it.name,
+        description: it.description ?? "",
+        price: Number(it.price ?? 0),
+        currency: "₹",
+        image:
+          (it.imageUrl && it.imageUrl.trim()) ||
+          "https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=600",
+        // category is only used for demo filters; in public mode we filter server-side
+        category: "mains" as any,
+      }));
+
+      setItems((prev) => (opts?.reset ? mapped : [...prev, ...mapped]));
+      setCursor(page?.nextCursor ?? null);
+      setHasMore(Boolean(page?.hasMore));
+      setSource("public");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Fetch real categories once (public website categories)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/public/menu/categories?limit=200", {
+          method: "GET",
+          credentials: "include",
+          headers: { "Cache-Control": "no-cache" },
+        });
+        if (!res.ok) return;
+        const json = await res.json();
+        const cats = (json?.data?.categories ?? json?.categories ?? []) as PublicCategory[];
+        if (!cancelled && Array.isArray(cats) && cats.length > 0) {
+          setCategories(cats);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Always try to load real items on mount (and on category change). Categories may be empty for some tenants.
+  useEffect(() => {
+    setItems([]);
+    setCursor(null);
+    setHasMore(false);
+    void loadPage({ reset: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCategoryId]);
+
+  const filtered = source === "public" ? items : items;
 
   return (
     <section id="menu" className="relative py-20 md:py-28">
@@ -55,18 +135,29 @@ export default function MenuSection({
 
       {/* Filter tabs */}
       <div className="mb-10 flex flex-wrap justify-center gap-2 px-6 md:gap-3">
-        {CATEGORIES.map((cat) => (
+        <button
+          key="all"
+          onClick={() => setActiveCategoryId("all")}
+          className="rounded-full px-5 py-2 text-xs font-semibold uppercase tracking-wider transition-all duration-300"
+          style={{
+            backgroundColor: activeCategoryId === "all" ? theme.primary : `${theme.text}0a`,
+            color: activeCategoryId === "all" ? "#fff" : `${theme.text}99`,
+          }}
+        >
+          All
+        </button>
+        {categories.map((cat) => (
           <button
-            key={cat.key}
-            onClick={() => setActive(cat.key)}
+            key={cat.id}
+            onClick={() => setActiveCategoryId(cat.id)}
             className="rounded-full px-5 py-2 text-xs font-semibold uppercase tracking-wider transition-all duration-300"
             style={{
               backgroundColor:
-                active === cat.key ? theme.primary : `${theme.text}0a`,
-              color: active === cat.key ? "#fff" : `${theme.text}99`,
+                activeCategoryId === cat.id ? theme.primary : `${theme.text}0a`,
+              color: activeCategoryId === cat.id ? "#fff" : `${theme.text}99`,
             }}
           >
-            {cat.label}
+            {cat.name}
           </button>
         ))}
       </div>
@@ -141,6 +232,25 @@ export default function MenuSection({
           ))}
         </AnimatePresence>
       </div>
+
+      {/* Pagination */}
+      {source === "public" ? (
+        <div className="mt-10 flex justify-center px-6 md:px-12">
+          <button
+            onClick={() => loadPage()}
+            disabled={!hasMore || loading}
+            className="rounded-full px-6 py-2.5 text-xs font-semibold uppercase tracking-wider transition-all duration-300 disabled:opacity-50"
+            style={{
+              backgroundColor: `${theme.text}0a`,
+              color: `${theme.text}cc`,
+              border: `1px solid ${theme.text}14`,
+            }}
+            title={activeLabel}
+          >
+            {loading ? "Loading…" : hasMore ? "Load more" : "End of menu"}
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

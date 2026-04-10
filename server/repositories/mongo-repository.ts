@@ -1,9 +1,10 @@
-import { Types } from "mongoose";
+import mongoose, { Types } from "mongoose";
 
 import { connectToDatabase } from "@/lib/db/connect";
 import { ItemAddon, ItemAddonGroup, ItemVariant, MenuCategory, MenuItem, Order, Payment, Restaurant } from "@/models";
 import { derivePaymentStatus } from "@/server/services/payment-status";
-
+import { menuItemSchema } from "@/lib/validators/menu";
+mongoose.set("debug", process.env.MONGOOSE_DEBUG === "true");
 type CategoryInput = {
   restaurantId: string;
   name: string;
@@ -253,13 +254,20 @@ export async function getRestaurantBundle(restaurantId: string) {
             email: restaurant.contact?.email ?? "",
             address: restaurant.contact?.address ?? ""
           },
+          onboarding: {
+            menuImported: Boolean((restaurant as any).onboarding?.menuImported),
+            receiptTemplateSaved: Boolean((restaurant as any).onboarding?.receiptTemplateSaved),
+            completedAt: (restaurant as any).onboarding?.completedAt?.toISOString?.()
+          },
           settings: {
             taxMode: restaurant.settings?.taxMode ?? "exclusive",
             gstEnabled: (restaurant.settings?.gstEnabled ?? true) === true,
             gstRatePercent: Number(restaurant.settings?.gstRatePercent ?? 5),
             gstin: restaurant.settings?.gstin ?? "",
             orderPrefix: restaurant.settings?.orderPrefix ?? "POS",
-            serviceChargeEnabled: restaurant.settings?.serviceChargeEnabled ?? false
+            serviceChargeEnabled: restaurant.settings?.serviceChargeEnabled ?? false,
+            openingTime: restaurant.settings?.openingTime ?? "09:00",
+            closingTime: restaurant.settings?.closingTime ?? "23:00"
           }
         }
       : null,
@@ -289,7 +297,6 @@ export async function createMenuItem(
     categoryId: toId(input.categoryId),
     name: input.name,
     slug: input.slug,
-    sku: input.sku?.trim() || undefined,
     description: input.description,
     imageUrl: input.imageUrl,
     price: input.price,
@@ -300,6 +307,9 @@ export async function createMenuItem(
     prepStation: input.prepStation,
     sortOrder: count + 1
   });
+  if (input.sku && input.sku.trim() !== "") {
+    item.sku = input.sku.trim().toLowerCase();
+  }
 
   return serializeMenuItem(item.toObject());
 }
@@ -337,7 +347,14 @@ export async function updateMenuItem(id: string, input: MenuItemInput) {
   item.categoryId = toId(input.categoryId);
   item.name = input.name;
   item.slug = input.slug;
-  item.sku = input.sku?.trim() || undefined;
+
+  // 🔥 FIXED SKU HANDLING
+  if (input.sku == null || input.sku.trim() === "") {
+    item.set("sku", undefined);
+  } else {
+    item.sku = input.sku.trim().toLowerCase();
+  }
+
   item.description = input.description;
   item.imageUrl = input.imageUrl;
   item.price = input.price;
@@ -346,9 +363,21 @@ export async function updateMenuItem(id: string, input: MenuItemInput) {
   item.isActive = input.isActive;
   item.tags = input.tags;
   item.prepStation = input.prepStation;
+
   await item.save();
 
   return serializeMenuItem(item.toObject());
+}
+
+export async function setMenuItemImageUrl(id: string, restaurantId: string, imageUrl: string) {
+  await connectToDatabase();
+  const item = await MenuItem.findOneAndUpdate(
+    { _id: toId(id), restaurantId: toId(restaurantId) },
+    { $set: { imageUrl: String(imageUrl || "").trim() } },
+    { new: true }
+  ).lean();
+  if (!item) throw new Error("Menu item not found.");
+  return serializeMenuItem(item);
 }
 
 export async function deleteMenuItem(id: string, restaurantId: string) {
@@ -371,15 +400,41 @@ export async function createCategory(
 ) {
   await connectToDatabase();
 
-  const category = await MenuCategory.create({
-    restaurantId: toId(input.restaurantId),
-    name: input.name,
-    slug: input.slug,
-    sortOrder: input.sortOrder,
-    isActive: input.isActive
-  });
+  const restaurantObjectId = toId(input.restaurantId);
+  const slug = String(input.slug || "").trim();
+  const name = String(input.name || "").trim();
+  if (!name || !slug) {
+    throw new Error("Category name/slug is required.");
+  }
 
-  return serializeCategory(category.toObject());
+  // Idempotent create: protect against double-submit / dev StrictMode / retries.
+  // Root categories created via the POS endpoints typically do not include menuId/parentId.
+  const sortOrder =
+    typeof input.sortOrder === "number"
+      ? input.sortOrder
+      : (await MenuCategory.countDocuments({ restaurantId: restaurantObjectId, isActive: true })) + 1;
+
+  const category = await MenuCategory.findOneAndUpdate(
+    {
+      restaurantId: restaurantObjectId,
+      parentId: null,
+      menuId: { $exists: false },
+      slug
+    },
+    {
+      $setOnInsert: {
+        restaurantId: restaurantObjectId,
+        parentId: null,
+        name,
+        slug,
+        sortOrder,
+        isActive: input.isActive ?? true
+      }
+    },
+    { new: true, upsert: true }
+  ).lean();
+
+  return serializeCategory(category);
 }
 
 export async function updateCategory(id: string, input: CategoryInput) {
@@ -626,3 +681,4 @@ export async function createPayment(input: {
 
   return serializePayment(payment.toObject());
 }
+

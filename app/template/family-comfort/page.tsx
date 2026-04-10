@@ -7,14 +7,18 @@ import {
   demoFamilyMenu,
 } from "@/data/demo-family";
 import FamilyComfort from "@/templates/FamilyComfort";
+import { getTemplateStorageKey } from "@/lib/templates/storage";
 
 export default function FamilyComfortPreview() {
   const [configOverride, setConfigOverride] = useState(demoFamilyConfig);
   const [dataOverride, setDataOverride] = useState(demoFamilyRestaurant);
+  const [restaurantId, setRestaurantId] = useState<string>("");
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("__pos_tpl_family-comfort");
+      const scopedKey = getTemplateStorageKey("family-comfort", restaurantId);
+      const legacyKey = getTemplateStorageKey("family-comfort", null);
+      const raw = localStorage.getItem(scopedKey) || localStorage.getItem(legacyKey);
       if (!raw) return;
       const parsed = JSON.parse(raw) as {
         theme?: Record<string, string>;
@@ -44,6 +48,24 @@ export default function FamilyComfortPreview() {
     } catch {
       // ignore parse errors
     }
+  }, [restaurantId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/restaurant/config", { credentials: "include" });
+        if (!res.ok) return;
+        const json = await res.json();
+        const rid = json?.data?.restaurant?.id ?? json?.restaurant?.id ?? "";
+        if (!cancelled && rid) setRestaurantId(String(rid));
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (

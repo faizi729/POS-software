@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { ok, fail, handleRouteError } from "@/lib/api/response";
-import { getSession } from "@/lib/auth/get-session";
+import { withAuth } from "@/lib/auth/with-auth";
 import { getCustomerDetail, redeemLoyaltyPoints, generateWhatsAppLink, WHATSAPP_TEMPLATES } from "@/server/services/crm-service";
 import { connectToDatabase } from "@/lib/db/connect";
 import { Customer } from "@/models";
@@ -16,12 +16,10 @@ type RouteContext = {
  * Get customer detail with loyalty history and recent orders
  */
 export async function GET(_: NextRequest, context: RouteContext) {
-  try {
-    const session = await getSession();
+  return withAuth<RouteContext>(["owner", "manager"], async (_req, context, session) => {
     const { id } = await context.params;
     const detail = await getCustomerDetail(id, session.restaurantId);
 
-    // Generate WhatsApp links
     const whatsappLinks = {
       missYou: generateWhatsAppLink(
         detail.phone,
@@ -37,9 +35,7 @@ export async function GET(_: NextRequest, context: RouteContext) {
     };
 
     return ok({ ...detail, whatsappLinks });
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  })(_ as any, context);
 }
 
 const customerUpdateSchema = z.object({
@@ -60,12 +56,10 @@ const redeemSchema = z.object({
  * Update customer or redeem loyalty points
  */
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  try {
-    const session = await getSession();
+  return withAuth<RouteContext>(["owner", "manager"], async (request, context, session) => {
     const { id } = await context.params;
     const body = await request.json();
 
-    // Check if this is a loyalty redemption
     if (body.action === "redeem") {
       const { points, description } = redeemSchema.parse(body);
       const result = await redeemLoyaltyPoints({
@@ -77,7 +71,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return ok(result);
     }
 
-    // Regular update
     const payload = customerUpdateSchema.parse(body);
     await connectToDatabase();
 
@@ -100,7 +93,5 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       name: customer.name,
       phone: customer.phone
     });
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  })(request, context);
 }

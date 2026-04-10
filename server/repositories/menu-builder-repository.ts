@@ -22,10 +22,24 @@ async function normalizeLegacyMenuHierarchy(restaurantId: string) {
     .sort({ isDefault: -1, sortOrder: 1, createdAt: 1 })
     .lean();
 
-  const defaultMenu = menus[0];
+  let defaultMenu = menus[0] as any;
 
+  // Ensure a default menu exists so legacy categories/items can be normalized and show in the tree
   if (!defaultMenu) {
-    return;
+    const created = await Menu.create({
+      restaurantId: restaurantObjectId,
+      name: "Main Menu",
+      slug: `main-menu-${restaurantId.slice(-6)}`,
+      description: "Default menu",
+      channels: ["pos"],
+      outletIds: ["main-outlet"],
+      dayParts: ["all_day"],
+      serviceModes: ["dine_in", "takeaway"],
+      isDefault: true,
+      isActive: true,
+      sortOrder: 1
+    });
+    defaultMenu = created.toObject();
   }
 
   const [legacyCategoryCount, legacyItemCount] = await Promise.all([
@@ -47,10 +61,18 @@ async function normalizeLegacyMenuHierarchy(restaurantId: string) {
 
     for (const category of legacyCategories) {
       category.menuId = defaultMenu._id;
-      category.parentId = undefined;
-      category.nodeType = category.nodeType ?? "category";
-      category.level = category.level ?? 0;
-      category.path = category.path?.length ? category.path : [category.name];
+      // Preserve parentId when present (subcategories). Only default missing hierarchy fields.
+      category.nodeType =
+        category.nodeType ??
+        (category.parentId ? ("subcategory" as const) : ("category" as const));
+      category.level =
+        category.level ?? (category.nodeType === "subcategory" ? 1 : 0);
+      category.path =
+        category.path?.length
+          ? category.path
+          : category.parentId
+            ? [category.name]
+            : [category.name];
       category.channels = category.channels?.length ? category.channels : defaultMenu.channels ?? ["pos"];
       category.dayParts = category.dayParts?.length ? category.dayParts : defaultMenu.dayParts ?? ["all_day"];
       category.outletIds = category.outletIds?.length ? category.outletIds : defaultMenu.outletIds ?? ["main-outlet"];
@@ -529,31 +551,52 @@ export async function createMenuNode(input: {
   await connectToDatabase();
   console.log("[menu-builder] createMenuNode input", input);
 
-  const node = await MenuCategory.create({
-    restaurantId: toId(input.restaurantId),
-    menuId: input.menuId ? toId(input.menuId) : undefined,
-    parentId: input.parentId ? toId(input.parentId) : undefined,
-    name: input.name,
-    slug: input.slug,
-    nodeType: input.nodeType,
-    level: input.level,
-    path: input.path,
-    channels: input.channels,
-    dayParts: input.dayParts,
-    outletIds: input.outletIds,
-    sortOrder: input.sortOrder,
-    isActive: input.isActive
-  });
+  const restaurantId = toId(input.restaurantId);
+  const menuId = input.menuId ? toId(input.menuId) : undefined;
+  const parentId = input.parentId ? toId(input.parentId) : undefined;
+  const slug = String(input.slug || "").trim();
+  const name = String(input.name || "").trim();
+  if (!name || !slug) {
+    throw new Error("Menu node name/slug is required.");
+  }
+
+  // Idempotent create: protects against double-submit / retries and cooperates with unique indexes.
+  const node = await MenuCategory.findOneAndUpdate(
+    {
+      restaurantId,
+      ...(menuId ? { menuId } : { menuId: { $exists: false } }),
+      ...(parentId ? { parentId } : { parentId: { $in: [null, undefined] } }),
+      slug
+    },
+    {
+      $setOnInsert: {
+        restaurantId,
+        ...(menuId ? { menuId } : {}),
+        ...(parentId ? { parentId } : { parentId: null }),
+        name,
+        slug,
+        nodeType: input.nodeType,
+        level: input.level,
+        path: input.path,
+        channels: input.channels,
+        dayParts: input.dayParts,
+        outletIds: input.outletIds,
+        sortOrder: input.sortOrder,
+        isActive: input.isActive
+      }
+    },
+    { new: true, upsert: true }
+  ).lean();
 
   console.log("[menu-builder] createMenuNode saved", {
     id: node._id.toString(),
     name: node.name,
-    menuId: node.menuId?.toString(),
-    parentId: node.parentId?.toString(),
-    nodeType: node.nodeType
+    menuId: (node as any).menuId?.toString?.(),
+    parentId: (node as any).parentId?.toString?.(),
+    nodeType: (node as any).nodeType
   });
 
-  return serializeCategory(node.toObject());
+  return serializeCategory(node);
 }
 
 export async function createAdvancedMenuItem(input: AdvancedMenuItemInput) {

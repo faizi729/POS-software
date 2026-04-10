@@ -14,6 +14,8 @@ export default async function DashboardPage() {
       recentOrders={data.recentOrders}
       lastToken={data.lastToken}
       hourlySales={data.hourlySales}
+      openingTime={data.openingTime}
+      closingTime={data.closingTime}
       allTimeRevenue={data.allTimeRevenue}
       totalOrders={data.totalOrders}
     />

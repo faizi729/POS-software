@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 
 import { ok, handleRouteError } from "@/lib/api/response";
-import { getSession } from "@/lib/auth/get-session";
+import { withAuth } from "@/lib/auth/with-auth";
 import { ORDER_STATUSES, ORDER_TYPES, PAYMENT_ORDER_STATUSES } from "@/lib/constants/roles";
 import { deleteOrder, getOrderById, updateOrder } from "@/server/repositories/mongo-repository";
 import { z } from "zod";
@@ -27,38 +27,34 @@ type RouteContext = {
 
 export async function GET(_: NextRequest, context: RouteContext) {
   try {
-    const session = await getSession();
     const { id } = await context.params;
-    const order = await getOrderById(id, session.restaurantId);
+    // RBAC: cashier/staff can read orders, but only within tenant
+    // NOTE: withAuth enforces session + tenant/subdomain match.
+    const order = await withAuth<RouteContext>(["owner", "manager", "cashier", "staff"], async (_req, context, session) => {
+      const { id } = await context.params;
+      return ok(await getOrderById(id, session.restaurantId));
+    })(_, context);
 
-    return ok(order);
+    return order;
   } catch (error) {
     return handleRouteError(error);
   }
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  try {
-    const session = await getSession();
+  return withAuth<RouteContext>(["owner", "manager", "cashier"], async (request, context, session) => {
     const { id } = await context.params;
     const body = await request.json();
     const payload = orderUpdateSchema.parse(body);
     const order = await updateOrder(id, session.restaurantId, payload);
-
     return ok(order);
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  })(request, context);
 }
 
 export async function DELETE(_: NextRequest, context: RouteContext) {
-  try {
-    const session = await getSession();
+  return withAuth<RouteContext>(["owner", "manager"], async (_req, context, session) => {
     const { id } = await context.params;
     const result = await deleteOrder(id, session.restaurantId);
-
     return ok(result);
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  })(_, context);
 }

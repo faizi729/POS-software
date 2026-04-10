@@ -1,6 +1,6 @@
- "use client";
+"use client";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +31,32 @@ export default function OnboardingPage() {
   const [saveMsg, setSaveMsg] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [menuSaved, setMenuSaved] = useState<boolean>(false);
+  const [receiptSaved, setReceiptSaved] = useState<boolean>(false);
+
+  // If a receipt template is already saved for this restaurant, mark as saved on load
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!rid) return;
+      try {
+        const res = await fetch(`/api/bill/clone/by-restaurant?restaurantId=${encodeURIComponent(rid)}`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store"
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (res.ok && payload?.data?.id && !cancelled) {
+          setReceiptSaved(true);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rid]);
 
   function removeCategory(name: string) {
     if (!menuExtract) return;
@@ -88,7 +114,7 @@ export default function OnboardingPage() {
       const res = await fetch("/api/menu/import/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ categories: shaped })
+        body: JSON.stringify({ categories: shaped, restaurantId: rid || undefined })
       });
       const payload = (await res.json().catch(() => ({}))) as { success?: boolean; data?: { created?: any; error?: string }; error?: string };
       if (!res.ok || !payload?.success) {
@@ -97,6 +123,7 @@ export default function OnboardingPage() {
         return;
       }
       setSaveMsg("Menu saved. You can adjust categories/items later.");
+      setMenuSaved(true);
     } catch {
       setError("Save failed");
     }
@@ -197,6 +224,12 @@ export default function OnboardingPage() {
               </div>
             </div>
           ) : null}
+
+          {menuSaved ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-900">
+              Menu import complete
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -204,20 +237,40 @@ export default function OnboardingPage() {
         restaurantName="Your Restaurant"
         restaurantId={rid || undefined}
         onTemplateSaved={() => {
-          // After saving receipt template, send to Orders
-          window.location.href = "/orders";
+          // Mark receipt saved; final CTA will navigate to Orders
+          setReceiptSaved(true);
         }}
       />
 
       <Card>
         <CardHeader>
-          <CardTitle>Step 2 — Billing setup</CardTitle>
+          <CardTitle>Step 2 — Billing template cloning</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <p className="text-sm text-text-secondary">Use your saved receipt template. You can always adjust tax and printer later in Settings.</p>
-          <div className="text-sm">
-            When you’re ready, go to Orders and try “Print bill” to verify the layout.
+          <p className="text-sm text-text-secondary">
+            Upload a bill (PDF/image), extract and save your receipt template. You can always edit it later from Settings.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>All set?</CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center justify-between gap-3">
+          <div className="text-sm text-text-secondary">
+            {menuSaved ? <span className="mr-2 rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-800">Menu ✓</span> : <span className="mr-2 rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">Menu pending</span>}
+            {receiptSaved ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-800">Receipt ✓</span> : <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">Receipt pending</span>}
           </div>
+          <Button
+            className="h-11 rounded-2xl"
+            disabled={!menuSaved || !receiptSaved}
+            onClick={() => {
+              window.location.href = "/orders";
+            }}
+          >
+            Start taking orders
+          </Button>
         </CardContent>
       </Card>
     </div>

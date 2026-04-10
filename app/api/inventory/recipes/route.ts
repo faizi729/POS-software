@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { ok, handleRouteError } from "@/lib/api/response";
-import { getSession } from "@/lib/auth/get-session";
+import { withAuth } from "@/lib/auth/with-auth";
 import { connectToDatabase } from "@/lib/db/connect";
 import { Recipe, MenuItem, Ingredient } from "@/models";
 import { Types } from "mongoose";
@@ -21,9 +21,8 @@ const recipeCreateSchema = z.object({
  * GET /api/inventory/recipes
  * List all recipe mappings for the restaurant
  */
-export async function GET() {
-  try {
-    const session = await getSession();
+export async function GET(request: NextRequest) {
+  return withAuth<any>(["owner", "manager"], async (_req, _ctx, session) => {
     await connectToDatabase();
 
     const rid = new Types.ObjectId(session.restaurantId);
@@ -32,10 +31,18 @@ export async function GET() {
       restaurantId: rid,
       isActive: true
     })
-      .populate("menuItemId", "name price")
+      .select({ menuItemId: 1, ingredients: 1 })
       .lean();
 
-    // Get all ingredient IDs referenced in recipes
+    const menuItemIds = Array.from(
+      new Set(recipes.map((r: any) => r.menuItemId?.toString()).filter(Boolean))
+    ).map((id) => new Types.ObjectId(id));
+
+    const menuItems = await MenuItem.find({ _id: { $in: menuItemIds }, restaurantId: rid })
+      .select({ name: 1, price: 1 })
+      .lean();
+    const menuItemMap = new Map(menuItems.map((m: any) => [m._id.toString(), m]));
+
     const ingredientIds = new Set<string>();
     for (const recipe of recipes) {
       for (const ing of recipe.ingredients) {
@@ -54,9 +61,9 @@ export async function GET() {
 
     const data = recipes.map((recipe) => ({
       id: recipe._id.toString(),
-      menuItemId: recipe.menuItemId?.toString() ?? (recipe.menuItemId as any)?._id?.toString(),
-      menuItemName: (recipe.menuItemId as any)?.name ?? "Unknown",
-      menuItemPrice: (recipe.menuItemId as any)?.price ?? 0,
+      menuItemId: recipe.menuItemId?.toString(),
+      menuItemName: menuItemMap.get(recipe.menuItemId?.toString())?.name ?? "Unknown",
+      menuItemPrice: menuItemMap.get(recipe.menuItemId?.toString())?.price ?? 0,
       ingredients: recipe.ingredients.map((ing) => {
         const info = ingredientMap.get(ing.ingredientId.toString());
         return {
@@ -70,9 +77,7 @@ export async function GET() {
     }));
 
     return ok(data);
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  })(request, {} as any);
 }
 
 /**
@@ -80,8 +85,7 @@ export async function GET() {
  * Create or update a recipe mapping
  */
 export async function POST(request: NextRequest) {
-  try {
-    const session = await getSession();
+  return withAuth<any>(["owner", "manager"], async (request, _ctx, session) => {
     const body = await request.json();
     const payload = recipeCreateSchema.parse(body);
 
@@ -90,14 +94,12 @@ export async function POST(request: NextRequest) {
     const rid = new Types.ObjectId(session.restaurantId);
     const menuItemOid = new Types.ObjectId(payload.menuItemId);
 
-    // Verify menu item exists
     const menuItem = await MenuItem.findOne({
       _id: menuItemOid,
       restaurantId: rid
     });
     if (!menuItem) throw new Error("Menu item not found.");
 
-    // Upsert recipe
     const recipe = await Recipe.findOneAndUpdate(
       { restaurantId: rid, menuItemId: menuItemOid },
       {
@@ -121,7 +123,5 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     );
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  })(request, {} as any);
 }

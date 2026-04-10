@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { ok, fail, handleRouteError } from "@/lib/api/response";
-import { getSession } from "@/lib/auth/get-session";
+import { withAuth } from "@/lib/auth/with-auth";
 import { connectToDatabase } from "@/lib/db/connect";
 import { Ingredient, InventoryLog } from "@/models";
 import { Types } from "mongoose";
@@ -28,8 +28,7 @@ type RouteContext = {
  * Update ingredient details OR adjust stock
  */
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  try {
-    const session = await getSession();
+  return withAuth<RouteContext>(["owner", "manager"], async (request, context, session) => {
     const { id } = await context.params;
     const body = await request.json();
 
@@ -42,7 +41,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     if (!ingredient) return fail("Ingredient not found.", 404);
 
-    // Check if this is a stock adjustment
     if (body.action) {
       const { action, quantity, reason } = stockAdjustSchema.parse(body);
 
@@ -54,14 +52,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       } else if (action === "wastage") {
         newStock = Math.max(0, previousStock - quantity);
       } else {
-        // adjustment — can be positive or negative, but use quantity as positive
-        newStock = quantity; // set absolute value
+        newStock = quantity;
       }
 
       ingredient.currentStock = newStock;
       await ingredient.save();
 
-      // Log the change
       await InventoryLog.create({
         restaurantId: new Types.ObjectId(session.restaurantId),
         ingredientId: new Types.ObjectId(id),
@@ -82,7 +78,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       });
     }
 
-    // Regular update
     const payload = ingredientUpdateSchema.parse(body);
     if (payload.name) ingredient.name = payload.name;
     if (typeof payload.reorderLevel === "number") ingredient.reorderLevel = payload.reorderLevel;
@@ -100,18 +95,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       costPerUnit: ingredient.costPerUnit,
       supplier: ingredient.supplier ?? ""
     });
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  })(request, context);
 }
 
 /**
  * DELETE /api/inventory/ingredients/[id]
  * Soft-delete an ingredient
  */
-export async function DELETE(_: NextRequest, context: RouteContext) {
-  try {
-    const session = await getSession();
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  return withAuth<RouteContext>(["owner", "manager"], async (_req, context, session) => {
     const { id } = await context.params;
 
     await connectToDatabase();
@@ -127,7 +119,5 @@ export async function DELETE(_: NextRequest, context: RouteContext) {
     await ingredient.save();
 
     return ok({ id });
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  })(request, context);
 }

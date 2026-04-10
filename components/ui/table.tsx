@@ -7,7 +7,11 @@ export function Table({
   className?: string;
   children: React.ReactNode;
 }) {
-  return <div className="overflow-x-auto"><table className={cn("w-full border-separate border-spacing-0", className)}>{children}</table></div>;
+  return (
+    <div className="overflow-x-auto">
+      <table className={cn("w-full border-separate border-spacing-0", className)}>{children}</table>
+    </div>
+  );
 }
 
 export function TableHeader({ children }: { children: React.ReactNode }) {
@@ -26,7 +30,7 @@ export function TableRow({
   children: React.ReactNode;
 }) {
   return (
-    <tr className={cn("transition hover:bg-bg-surface", className)}>
+    <tr className={cn("transition-colors duration-200 hover:bg-bg-surface", className)}>
       {children}
     </tr>
   );
@@ -42,7 +46,7 @@ export function TableHead({
   return (
     <th
       className={cn(
-        "border-b border-border-subtle px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.04em] text-text-muted",
+        "sticky top-0 z-10 border-b border-border-subtle bg-bg-elevated/95 px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.04em] text-text-muted backdrop-blur",
         className
       )}
     >

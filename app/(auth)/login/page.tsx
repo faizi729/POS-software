@@ -3,9 +3,12 @@ import { ArrowRight, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
+import { toast } from "@/lib/toast";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -13,9 +16,20 @@ export default function LoginPage() {
   const [restaurantSlug, setRestaurantSlug] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ restaurantSlug?: string; email?: string; password?: string }>({});
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const nextErrors: typeof fieldErrors = {};
+    if (!restaurantSlug.trim()) nextErrors.restaurantSlug = "Workspace slug is required.";
+    if (!email.trim()) nextErrors.email = "Email is required.";
+    if (!password.trim()) nextErrors.password = "Password is required.";
+    setFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) {
+      toast.error("Fix the highlighted fields", { durationMs: 2600 });
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -28,9 +42,11 @@ export default function LoginPage() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.error || "Failed to sign in");
       }
-      window.location.href = "/"; // redirect to dashboard root
+      toast.success("Signed in", { durationMs: 2200 });
+      window.location.href = "/dashboard"; // redirect to dashboard
     } catch (err: any) {
       setError(err.message || "Something went wrong");
+      toast.error("Sign in failed", { message: err?.message || "Try again", durationMs: 3400 });
     } finally {
       setLoading(false);
     }
@@ -42,7 +58,12 @@ export default function LoginPage() {
         <section className="surface-card relative overflow-hidden p-8 md:p-10">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(15,118,110,0.15),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(217,119,6,0.15),transparent_28%)]" />
           <div className="relative">
-            <p className="label-text">Restaurant operations</p>
+            <div className="flex items-center gap-3">
+              <span className="grid size-11 place-items-center rounded-2xl border border-border-subtle bg-white/80 shadow-soft backdrop-blur">
+                <Image src="/logo.png" alt="Rasoio" width={26} height={26} className="select-none" priority />
+              </span>
+              <p className="label-text">Rasoio</p>
+            </div>
             <h1 className="mt-3 max-w-xl text-[2.75rem] leading-[3.1rem] tracking-[-0.04em]">
               Premium counter speed with a calm, modern back office.
             </h1>
@@ -80,7 +101,9 @@ export default function LoginPage() {
                   value={restaurantSlug}
                   onChange={(e) => setRestaurantSlug(e.target.value)}
                   disabled={loading}
+                  aria-invalid={Boolean(fieldErrors.restaurantSlug)}
                 />
+                <FieldError message={fieldErrors.restaurantSlug} />
               </div>
               <div className="space-y-2">
                 <label className="label-text">Email</label>
@@ -90,7 +113,9 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={loading}
+                  aria-invalid={Boolean(fieldErrors.email)}
                 />
+                <FieldError message={fieldErrors.email} />
               </div>
               <div className="space-y-2">
                 <label className="label-text">Password</label>
@@ -100,7 +125,9 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading}
+                  aria-invalid={Boolean(fieldErrors.password)}
                 />
+                <FieldError message={fieldErrors.password} />
               </div>
               {error ? <p className="text-sm text-red-600">{error}</p> : null}
               <Button

@@ -1,15 +1,13 @@
 import { ok, handleRouteError } from "@/lib/api/response";
-import { getSession } from "@/lib/auth/get-session";
+import { NextRequest } from "next/server";
+import { withAuth } from "@/lib/auth/with-auth";
 import { deleteMenuDefinitionCascade } from "@/server/repositories/menu-builder-repository";
 
-export async function DELETE(_: Request, context: { params: Promise<{ id: string }> }) {
-  try {
-    const session = await getSession();
+export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  return withAuth<any>(["owner", "manager"], async (_req, context, session) => {
     const { id } = await context.params;
     const result = await deleteMenuDefinitionCascade({ restaurantId: session.restaurantId, menuId: id });
     return ok(result);
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  })(request, context as any);
 }
 

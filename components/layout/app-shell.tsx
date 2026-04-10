@@ -2,21 +2,63 @@ import { AppShellClient } from "@/components/layout/app-shell-client";
 import { getSession } from "@/lib/auth/get-session";
 import { getRestaurantBundle } from "@/server/repositories/mongo-repository";
 import { redirect } from "next/navigation";
+import { connectToDatabase } from "@/lib/db/connect";
+import { MenuItem, ReceiptTemplate, Restaurant } from "@/models";
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
   const session = await getSession();
   const data = await getRestaurantBundle(session.restaurantId);
 
-  // Gate onboarding: if required flags are missing, redirect to onboarding
-  const needsOnboarding =
-    !data.restaurant ||
-    !((data as any).restaurant?.settings) || // settings exist but we also check restaurant for onboarding flags if present
-    !((data as any).restaurant?.onboarding?.menuImported && (data as any).restaurant?.onboarding?.receiptTemplateSaved);
-  // Allow onboarding page to render itself; consumers using AppShell wrap onboarding too,
-  // so rely on caller path. If not available, always allow onboarding route.
-  // Since we are in a server component without pathname, rely on a soft heuristic: children of onboarding page won't need redirect here.
+  /**
+   * Gate onboarding.
+   *
+   * Important: we DO NOT solely trust `restaurant.onboarding.*` flags because:
+   * - older tenants may have real data (menu/templates) but flags defaulted to false
+   * - a previous write may have failed, causing an onboarding redirect loop
+   *
+   * So if flags indicate "not complete", we verify by checking existence of actual data
+   * and backfill the flags to "heal" the tenant.
+   */
+  if (!data.restaurant) {
+    redirect(`/onboarding?rid=${encodeURIComponent(session.restaurantId)}`);
+  }
+
+  const storedMenuImported = Boolean((data as any).restaurant?.onboarding?.menuImported);
+  const storedReceiptSaved = Boolean((data as any).restaurant?.onboarding?.receiptTemplateSaved);
+
+  let menuImported = storedMenuImported;
+  let receiptTemplateSaved = storedReceiptSaved;
+
+  // Fast-path: if both flags are already true, never hit DB again.
+  if (!(menuImported && receiptTemplateSaved)) {
+    // Menu existence can be derived from already-fetched bundle
+    menuImported = menuImported || (Array.isArray(data.menuItems) && data.menuItems.length > 0);
+
+    // Receipt templates are not in the bundle; do a lightweight count only when needed
+    if (!receiptTemplateSaved) {
+      await connectToDatabase();
+      const templateCount = await ReceiptTemplate.countDocuments({ restaurantId: session.restaurantId });
+      receiptTemplateSaved = templateCount > 0;
+    }
+
+    // If reality says onboarding is done, backfill flags to prevent future loops
+    if (menuImported || receiptTemplateSaved) {
+      const set: Record<string, any> = {};
+      if (menuImported && !storedMenuImported) set["onboarding.menuImported"] = true;
+      if (receiptTemplateSaved && !storedReceiptSaved) set["onboarding.receiptTemplateSaved"] = true;
+
+      if (Object.keys(set).length) {
+        // Best-effort backfill; never block render on it
+        Restaurant.findByIdAndUpdate(session.restaurantId, {
+          $set: set,
+          $currentDate: { "onboarding.completedAt": { $type: "date" } as any }
+        }).catch(() => {});
+      }
+    }
+  }
+
+  const needsOnboarding = !(menuImported && receiptTemplateSaved);
   if (needsOnboarding) {
-    // Pass rid for better UX
     const rid = (data.restaurant?.id as string) || session.restaurantId;
     redirect(`/onboarding?rid=${encodeURIComponent(rid)}`);
   }
