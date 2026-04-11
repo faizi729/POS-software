@@ -43,7 +43,8 @@ export function TableManager({ initialTables }: { initialTables: TableRow[] }) {
       if (!res.ok || !payload.success || !payload.data) {
         throw new Error(payload.error ?? "Couldn’t add table");
       }
-      setTables((prev) => [...prev, payload.data].sort((a, b) => a.number.localeCompare(b.number)));
+      const newRow = payload.data;
+      setTables((prev) => [...prev, newRow].sort((a, b) => a.number.localeCompare(b.number)));
       setForm({ number: "", label: "", capacity: "4", section: "" });
       setOpen(false);
       toast.success("Table added");

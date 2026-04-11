@@ -17,34 +17,51 @@ export async function GET(request: NextRequest) {
         .sort({ number: 1 })
         .lean();
 
-      const serialized = tables.map((table) => ({
-        id: String(table._id),
-        number: table.number,
-        label: table.label ?? "",
-        capacity: Number(table.capacity ?? 4),
-        status: table.status,
-        section: table.section ?? "",
-        currentOrderId: table.currentOrderId
-          ? {
-              id: String(table.currentOrderId._id),
-              orderNumber: table.currentOrderId.orderNumber,
-              tokenNumber: table.currentOrderId.tokenNumber ?? 0,
-              status: table.currentOrderId.status,
-              paymentStatus: table.currentOrderId.paymentStatus,
-              pricing: {
-                grandTotal: Number(table.currentOrderId?.pricing?.grandTotal ?? 0)
+      type PopulatedOrderLean = {
+        _id: unknown;
+        orderNumber: string;
+        tokenNumber?: number;
+        status: string;
+        paymentStatus: string;
+        pricing?: { grandTotal?: number };
+      };
+
+      const serialized = tables.map((table) => {
+        const co = table.currentOrderId;
+        const populated =
+          co && typeof co === "object" && "orderNumber" in co
+            ? (co as unknown as PopulatedOrderLean)
+            : null;
+
+        return {
+          id: String(table._id),
+          number: table.number,
+          label: table.label ?? "",
+          capacity: Number(table.capacity ?? 4),
+          status: table.status,
+          section: table.section ?? "",
+          currentOrderId: populated
+            ? {
+                id: String(populated._id as { toString(): string } | string),
+                orderNumber: populated.orderNumber,
+                tokenNumber: populated.tokenNumber ?? 0,
+                status: populated.status,
+                paymentStatus: populated.paymentStatus,
+                pricing: {
+                  grandTotal: Number(populated.pricing?.grandTotal ?? 0)
+                }
               }
-            }
-          : null,
-        position: table.position
-          ? {
-              x: typeof table.position.x === "number" ? table.position.x : 0,
-              y: typeof table.position.y === "number" ? table.position.y : 0
-            }
-          : null,
-        createdAt: table.createdAt?.toISOString?.() ?? undefined,
-        updatedAt: table.updatedAt?.toISOString?.() ?? undefined
-      }));
+            : null,
+          position: table.position
+            ? {
+                x: typeof table.position.x === "number" ? table.position.x : 0,
+                y: typeof table.position.y === "number" ? table.position.y : 0
+              }
+            : null,
+          createdAt: table.createdAt?.toISOString?.() ?? undefined,
+          updatedAt: table.updatedAt?.toISOString?.() ?? undefined
+        };
+      });
 
       return ok(serialized);
     })(request, {} as any);

@@ -53,18 +53,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       if (!table) {
         throw new Error("Table not found.");
       }
+      type PopulatedOrderLean = {
+        _id: unknown;
+        orderNumber: string;
+        tokenNumber?: number;
+        status: string;
+        paymentStatus: string;
+        pricing?: { grandTotal?: number };
+      };
+      const co = table.currentOrderId;
       const current =
-        table.currentOrderId &&
-        typeof table.currentOrderId === "object" &&
-        "orderNumber" in table.currentOrderId
-          ? (table.currentOrderId as {
-              _id: string;
-              orderNumber: string;
-              tokenNumber?: number;
-              status: string;
-              paymentStatus: string;
-              pricing?: { grandTotal?: number };
-            })
+        co && typeof co === "object" && "orderNumber" in co
+          ? (co as unknown as PopulatedOrderLean)
           : null;
 
       return ok({
@@ -76,7 +76,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         section: table.section ?? "",
         currentOrderId: current
           ? {
-              id: String(current._id),
+              id: String(current._id as { toString(): string } | string),
               orderNumber: current.orderNumber,
               tokenNumber: current.tokenNumber ?? 0,
               status: current.status,
