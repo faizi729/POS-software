@@ -1,53 +1,19 @@
 /**
- * Razorpay webhook for payment link status updates.
- *
- * When a payment link is paid, this webhook:
- * 1. Verifies the signature
- * 2. Calls handlePaymentSuccess which creates the POS order + sends WA confirmation
+ * Razorpay webhook: payment links (WhatsApp) + SaaS subscriptions (platform).
+ * Configure this URL in Razorpay Dashboard → Webhooks (same signing secret as RAZORPAY_WEBHOOK_SECRET).
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { verifyWebhookSignature } from "@/server/services/wa-payment-service";
-import { handlePaymentSuccess } from "@/server/services/wa-state-machine";
+
+import { processRazorpayWebhookPayload } from "@/lib/billing/razorpay-incoming-webhook";
 
 export async function POST(request: NextRequest) {
   try {
     const rawBody = await request.text();
     const signature = request.headers.get("x-razorpay-signature") ?? "";
 
-    // 1. Verify signature
-    let isValid = false;
-    try {
-      isValid = verifyWebhookSignature(rawBody, signature);
-    } catch {
-      isValid = false;
-    }
-
-    if (!isValid) {
-      console.warn("[razorpay-webhook] invalid signature");
-      return new NextResponse("Invalid signature", { status: 400 });
-    }
-
-    // 2. Parse event
-    const event = JSON.parse(rawBody);
-    const eventType = event?.event;
-
-    console.log("[razorpay-webhook] received event:", eventType);
-
-    // 3. Handle payment link paid
-    if (eventType === "payment_link.paid") {
-      const paymentLink = event?.payload?.payment_link?.entity;
-      const linkId = paymentLink?.id;
-
-      if (linkId) {
-        // Process async — webhook must respond fast
-        handlePaymentSuccess(linkId).catch((err) =>
-          console.error("[razorpay-webhook] handlePaymentSuccess error:", err)
-        );
-      }
-    }
-
-    return new NextResponse("OK", { status: 200 });
+    const result = await processRazorpayWebhookPayload(rawBody, signature);
+    return new NextResponse(result.message, { status: result.status });
   } catch (error) {
     console.error("[razorpay-webhook] error:", error);
     return new NextResponse("OK", { status: 200 });

@@ -23,10 +23,28 @@ const restaurantSchema = new Schema(
     timezone: { type: String, required: true },
     currency: { type: String, required: true, uppercase: true, minlength: 3, maxlength: 3 },
     status: { type: String, enum: ["active", "suspended"], default: "active" },
-    plan: { type: String, enum: ["starter", "growth", "scale"], default: "growth", index: true },
+    /** SaaS tier for limits + billing; `none` until you assign a tier or create a Razorpay subscription. */
+    plan: { type: String, enum: ["none", "starter", "growth", "scale"], default: "none", index: true },
+    /** Billing lifecycle (independent of operational suspend). */
+    subscriptionStatus: {
+      type: String,
+      enum: ["trial", "active", "past_due", "suspended", "churned"],
+      default: "active",
+      index: true
+    },
+    trialEndsAt: { type: Date },
+    billingEmail: { type: String, trim: true, lowercase: true },
+    /** Razorpay Subscriptions (platform SaaS billing) — set via Super Admin or webhooks. */
+    razorpayCustomerId: { type: String, trim: true, sparse: true, index: true },
+    razorpaySubscriptionId: { type: String, trim: true, sparse: true, index: true },
+    /** Matches Razorpay plan period (monthly vs yearly SaaS plan). */
+    saasBillingInterval: { type: String, enum: ["monthly", "yearly"], sparse: true },
+    notesInternal: { type: String, trim: true, default: "" },
     features: {
       websiteSync: { type: Boolean, default: true },
-      aiFeatures: { type: Boolean, default: false }
+      aiFeatures: { type: Boolean, default: false },
+      whatsappOrdering: { type: Boolean, default: true },
+      qrOrdering: { type: Boolean, default: true }
     },
     settings: {
       taxMode: { type: String, enum: ["inclusive", "exclusive"], default: "exclusive" },
@@ -68,6 +86,7 @@ const restaurantSchema = new Schema(
 );
 restaurantSchema.index({ status: 1 });
 restaurantSchema.index({ plan: 1, status: 1 });
+restaurantSchema.index({ subscriptionStatus: 1, status: 1 });
 restaurantSchema.index({ createdAt: -1, status: 1, plan: 1 });
 restaurantSchema.index({ slug: 1 }, { unique: true });
 restaurantSchema.index({ subdomain: 1 }, { unique: true, sparse: true });

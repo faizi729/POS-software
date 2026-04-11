@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Manrope } from "next/font/google";
 
 import "./globals.css";
@@ -22,14 +22,23 @@ export const metadata: Metadata = {
   }
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover"
+};
+
 export default function RootLayout({
   children
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${manrope.variable} min-h-screen antialiased`}>
+    <html lang="en" className="w-full overflow-x-clip">
+      <body
+        className={`${manrope.variable} min-h-screen w-full max-w-full overflow-x-clip antialiased`}
+      >
         <UnhandledErrorsListener />
         <RestaurantConfigBootstrap />
         <RouteTransitionOverlay />

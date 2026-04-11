@@ -7,11 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { formatPlanLabel } from "@/lib/super-admin/plan-label";
 
 export default async function SuperAdminTenantsPage({
   searchParams
 }: {
-  searchParams: Promise<{ q?: string; status?: string; plan?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; plan?: string; impersonate?: string }>;
 }) {
   const sp = await searchParams;
   const q = (sp.q || "").trim();
@@ -22,12 +23,17 @@ export default async function SuperAdminTenantsPage({
   const filter: any = {};
   if (q) filter.$or = [{ name: new RegExp(q, "i") }, { slug: new RegExp(q, "i") }];
   if (status === "active" || status === "suspended") filter.status = status;
-  if (plan === "starter" || plan === "growth" || plan === "scale") filter.plan = plan;
+  if (plan === "none" || plan === "starter" || plan === "growth" || plan === "scale") filter.plan = plan;
 
   const tenants = await Restaurant.find(filter).sort({ createdAt: -1 }).limit(200).lean();
 
   return (
     <div className="space-y-6">
+      {sp.impersonate === "invalid" ? (
+        <div className="rounded-2xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm text-text-secondary">
+          Impersonation failed: invalid request.
+        </div>
+      ) : null}
       <Card>
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
@@ -64,6 +70,7 @@ export default async function SuperAdminTenantsPage({
               className="h-10 rounded-xl border border-border-subtle bg-white px-3 text-sm text-text-primary"
             >
               <option value="">All plans</option>
+              <option value="none">Unassigned</option>
               <option value="starter">Starter</option>
               <option value="growth">Growth</option>
               <option value="scale">Scale</option>
@@ -77,6 +84,7 @@ export default async function SuperAdminTenantsPage({
                   <TableHead>Tenant</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Plan</TableHead>
+                  <TableHead>Billing</TableHead>
                   <TableHead>Features</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -93,7 +101,12 @@ export default async function SuperAdminTenantsPage({
                     <TableCell>
                       <Badge variant={t.status === "active" ? "success" : "warning"}>{t.status}</Badge>
                     </TableCell>
-                    <TableCell className="text-text-primary font-semibold">{t.plan ?? "growth"}</TableCell>
+                    <TableCell className="text-text-primary font-semibold">{formatPlanLabel(t.plan)}</TableCell>
+                    <TableCell>
+                      <Badge variant="neutral" className="capitalize">
+                        {(t as any).subscriptionStatus ?? "active"}
+                      </Badge>
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-2">
                         <Badge variant={(t.features?.websiteSync ?? true) ? "success" : "danger"}>websiteSync</Badge>
@@ -114,7 +127,7 @@ export default async function SuperAdminTenantsPage({
                 ))}
                 {tenants.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-text-muted">
+                    <TableCell colSpan={6} className="text-center text-text-muted">
                       No tenants found.
                     </TableCell>
                   </TableRow>

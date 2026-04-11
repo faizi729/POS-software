@@ -59,7 +59,7 @@ export default function SuperAdminLoginPage() {
               <span className="grid size-11 place-items-center rounded-2xl border border-border-subtle bg-white/80 shadow-soft backdrop-blur">
                 <Image src="/logo.png" alt="Rasoio" width={26} height={26} className="select-none" priority />
               </span>
-              <p className="label-text">Rasoio platform</p>
+              <p className="label-text">Platform control plane</p>
             </div>
             <h1 className="mt-3 max-w-xl text-[2.6rem] leading-[3.05rem] tracking-[-0.04em]">
               Super Admin

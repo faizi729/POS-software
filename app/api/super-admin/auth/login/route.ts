@@ -6,6 +6,7 @@ import { getClientIp, rateLimit } from "@/lib/middleware/rate-limit";
 import { verifyPassword } from "@/lib/auth/password";
 import { signSuperAdminJwt } from "@/lib/auth/super-admin-jwt";
 import { PlatformUser } from "@/models/PlatformUser";
+import { isPlatformRole } from "@/lib/auth/platform-role";
 
 const schema = z.object({
   email: z.string().email(),
@@ -29,17 +30,23 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
 
   const email = parsed.data.email.toLowerCase();
-  const user = await PlatformUser.findOne({ email, status: "active", role: "super_admin" });
+  const user = await PlatformUser.findOne({
+    email,
+    status: "active",
+    role: { $in: ["super_admin", "support", "finance", "read_only"] }
+  });
   if (!user || !(await verifyPassword(parsed.data.password, user.passwordHash))) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
+
+  const role = isPlatformRole(String(user.role)) ? user.role : "read_only";
 
   user.lastLoginAt = new Date();
   await user.save().catch(() => {});
 
   const token = await signSuperAdminJwt({
     platformUserId: user._id.toString(),
-    role: "super_admin",
+    role,
     email: user.email,
     name: user.name
   });

@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { Building2, LayoutGrid, LogOut, Settings2, Users } from "lucide-react";
+import { LogOut } from "lucide-react";
 
 import { getSuperAdminSession } from "@/lib/auth/get-super-admin-session";
-import { SuperAdminSideLink } from "@/components/super-admin/super-admin-side-link";
+import { SuperAdminSidebar } from "@/components/super-admin/super-admin-sidebar";
 
 export default async function SuperAdminProtectedLayout({ children }: { children: React.ReactNode }) {
   const session = await getSuperAdminSession().catch(() => null);
@@ -21,7 +21,9 @@ export default async function SuperAdminProtectedLayout({ children }: { children
               </span>
               <div className="leading-tight">
                 <p className="text-sm font-semibold text-text-primary">Super Admin</p>
-                <p className="text-xs text-text-muted">{session.email}</p>
+                <p className="text-xs text-text-muted">
+                  {session.email} · <span className="capitalize">{session.role.replace("_", " ")}</span>
+                </p>
               </div>
             </div>
             <form action="/api/super-admin/auth/logout" method="post">
@@ -35,15 +37,11 @@ export default async function SuperAdminProtectedLayout({ children }: { children
       </header>
 
       <div className="section-shell py-6 md:py-8">
-        <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
-          <aside className="surface-card h-fit p-3">
-            <nav className="flex flex-col gap-1">
-              <SuperAdminSideLink href="/super-admin" icon={LayoutGrid} label="Dashboard" />
-              <SuperAdminSideLink href="/super-admin/tenants" icon={Building2} label="Tenants" />
-              <SuperAdminSideLink href="/super-admin/users" icon={Users} label="Users" />
-            </nav>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,17rem)_1fr]">
+          <aside className="surface-card h-fit min-w-0 p-3 lg:sticky lg:top-24 lg:self-start">
+            <SuperAdminSidebar />
           </aside>
-          <section>{children}</section>
+          <section className="min-w-0">{children}</section>
         </div>
       </div>
     </div>

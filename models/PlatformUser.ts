@@ -7,9 +7,10 @@ const platformUserSchema = new Schema(
     passwordHash: { type: String, required: true },
     role: {
       type: String,
-      enum: ["super_admin"],
+      enum: ["super_admin", "support", "finance", "read_only"],
       required: true,
-      index: true
+      index: true,
+      default: "super_admin"
     },
     status: { type: String, enum: ["active", "disabled"], default: "active", index: true },
     lastLoginAt: Date

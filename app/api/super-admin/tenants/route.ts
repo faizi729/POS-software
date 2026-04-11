@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { connectToDatabase } from "@/lib/db/connect";
 import { getSuperAdminSession } from "@/lib/auth/get-super-admin-session";
+import { assertCanMutate } from "@/lib/auth/super-admin-permissions";
 import { Restaurant } from "@/models/Restaurant";
 import { AuditLog } from "@/models/AuditLog";
 import { getClientIp, rateLimit } from "@/lib/middleware/rate-limit";
@@ -12,7 +13,7 @@ const createSchema = z.object({
   slug: z.string().min(2).regex(/^[a-z0-9-]+$/),
   timezone: z.string().min(2).default("Asia/Kolkata"),
   currency: z.string().length(3).default("INR"),
-  plan: z.enum(["starter", "growth", "scale"]).default("growth")
+  plan: z.enum(["none", "starter", "growth", "scale"]).default("none")
 });
 
 export async function GET(req: NextRequest) {
@@ -38,7 +39,7 @@ export async function GET(req: NextRequest) {
   const filter: any = {};
   if (q) filter.$or = [{ name: new RegExp(q, "i") }, { slug: new RegExp(q, "i") }];
   if (status && ["active", "suspended"].includes(status)) filter.status = status;
-  if (plan && ["starter", "growth", "scale"].includes(plan)) filter.plan = plan;
+  if (plan && ["none", "starter", "growth", "scale"].includes(plan)) filter.plan = plan;
   if (cursor) {
     const d = new Date(cursor);
     if (!Number.isNaN(d.getTime())) {
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest) {
   }
 
   const tenants = await Restaurant.find(filter)
-    .select({ name: 1, slug: 1, status: 1, plan: 1, features: 1, createdAt: 1 })
+    .select({ name: 1, slug: 1, status: 1, plan: 1, subscriptionStatus: 1, features: 1, createdAt: 1 })
     .sort({ createdAt: direction === "desc" ? -1 : 1 })
     .limit(limit)
     .lean();
@@ -60,7 +61,8 @@ export async function GET(req: NextRequest) {
       name: t.name,
       slug: t.slug,
       status: t.status,
-      plan: t.plan ?? "growth",
+      plan: t.plan ?? "none",
+      subscriptionStatus: (t as any).subscriptionStatus ?? "active",
       features: t.features ?? { websiteSync: true, aiFeatures: false },
       createdAt: t.createdAt?.toISOString?.()
     }))
@@ -69,6 +71,12 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const sa = await getSuperAdminSession();
+  try {
+    assertCanMutate(sa, "tenant_write");
+  } catch (e: any) {
+    if (e?.statusCode === 403) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    throw e;
+  }
   const rl = await rateLimit({
     request: req,
     keyParts: ["sa-tenants-post", getClientIp(req)],

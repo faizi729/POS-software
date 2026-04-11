@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -33,19 +33,29 @@ export const metadata: Metadata = {
     "Update once in POS → instantly updates on your website. Stop refunds, stop double entry, and keep your menu accurate everywhere automatically."
 };
 
+/** Ensures correct mobile layout even if root layout metadata is customized elsewhere. */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover"
+};
+
 const PRIMARY_CTA_HREF = "/demo" as const;
 const LOGIN_HREF = "/login" as const;
 const SECONDARY_CTA_HREF = "#proof";
-const PRIMARY_CTA_TEXT = "See your menu sync live on WhatsApp/Meet (15 min)";
+const PRIMARY_CTA_TEXT = "See your menu sync";
+/** Shorter label for narrow viewports so CTAs stay usable */
+const PRIMARY_CTA_TEXT_SHORT = "See menu sync live (15 min)";
 const SECONDARY_CTA_TEXT = "Watch the 20‑second proof";
 
 export default function HomePage() {
   return (
-    <main className="relative">
+    <main className="relative w-full max-w-full min-w-0 overflow-x-clip break-words">
       <SkipLink />
       <TopNav />
 
-      <div id="main" className="scroll-mt-24">
+      <div id="main" className="scroll-mt-[max(5rem,env(safe-area-inset-top,0px)+3.5rem)] sm:scroll-mt-24">
         <Hero />
         <HardPain />
         <OldVsNew />
@@ -113,48 +123,99 @@ function SkipLink() {
 function TopNav() {
   return (
     <header className="sticky top-0 z-50 border-b border-border-subtle bg-[rgba(255,253,249,0.82)] backdrop-blur supports-[backdrop-filter]:bg-[rgba(255,253,249,0.72)]">
-      <div className="section-shell py-4">
-        <div className="flex items-center justify-between gap-3">
-          <Link href="/" className="group inline-flex items-center gap-2">
-            <span className="grid size-10 place-items-center rounded-2xl border border-border-subtle bg-bg-elevated shadow-soft">
-              <UtensilsCrossed className="size-5 text-accent-primary" />
+      <div className="section-shell py-3 sm:py-4">
+        <div className="flex min-w-0 items-center justify-between gap-1.5 sm:gap-3">
+          <Link
+            href="/"
+            className="group inline-flex min-w-0 max-w-[min(100%,11.5rem)] flex-1 items-center gap-1.5 sm:max-w-none sm:flex-none sm:gap-2"
+          >
+            <span className="grid size-9 shrink-0 place-items-center rounded-2xl border border-border-subtle bg-bg-elevated shadow-soft sm:size-10">
+              <UtensilsCrossed className="size-[1.125rem] text-accent-primary sm:size-5" />
             </span>
-            <div className="leading-tight">
-              <p className="text-sm font-semibold text-text-primary">Restaurant OS</p>
-              <p className="text-xs text-text-muted">POS + Website + Menu Sync</p>
+            <div className="min-w-0 leading-tight">
+              <p className="truncate text-[0.8125rem] font-semibold text-text-primary sm:text-sm">Restaurant OS</p>
+              <p className="hidden text-xs text-text-muted sm:block">POS + Website + Menu Sync</p>
             </div>
           </Link>
 
-          <nav className="hidden items-center gap-1 md:flex">
+          <nav className="hidden min-w-0 items-center gap-0.5 lg:flex lg:gap-1">
             <NavLink href="#features">Outcomes</NavLink>
             <NavLink href="#how">How it works</NavLink>
             <NavLink href="#pricing">Pricing</NavLink>
             <NavLink href="#faq">FAQ</NavLink>
           </nav>
 
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 shrink-0 items-center gap-1 sm:gap-2">
+            <details className="group relative lg:hidden">
+              <summary
+                className="flex h-10 min-h-10 cursor-pointer list-none items-center gap-1 rounded-xl border border-border-subtle bg-bg-surface px-2.5 py-0 text-xs font-semibold text-text-primary shadow-sm transition hover:border-border-strong sm:min-h-0 sm:px-3 sm:py-2 sm:text-sm [&::-webkit-details-marker]:hidden"
+                aria-label="Open page sections menu"
+              >
+                Menu
+                <ChevronRight className="size-3.5 shrink-0 transition group-open:rotate-90 sm:size-4" />
+              </summary>
+              <div className="absolute right-0 z-50 mt-2 w-[min(18rem,calc(100dvw-1.25rem))] rounded-2xl border border-border-subtle bg-bg-elevated p-2 shadow-soft">
+                <div className="flex flex-col gap-0.5">
+                  <MobileNavRow href="#features">Outcomes</MobileNavRow>
+                  <MobileNavRow href="#how">How it works</MobileNavRow>
+                  <MobileNavRow href="#pricing">Pricing</MobileNavRow>
+                  <MobileNavRow href="#faq">FAQ</MobileNavRow>
+                  <MobileNavRow href="#proof">Live proof</MobileNavRow>
+                </div>
+              </div>
+            </details>
+
             <Link
               href={LOGIN_HREF}
-              className="hidden rounded-xl px-3 py-2 text-sm font-semibold text-text-secondary transition hover:bg-bg-surface hover:text-text-primary md:inline-flex"
+              className="hidden rounded-xl px-2 py-2 text-sm font-semibold text-text-secondary transition hover:bg-bg-surface hover:text-text-primary sm:inline-flex md:px-3"
             >
               Sign in
             </Link>
             <Link
               href={PRIMARY_CTA_HREF}
-              className={cn("hidden md:inline-flex", buttonClass({ size: "default", variant: "primary" }))}
+              className={cn(
+                "hidden md:inline-flex lg:hidden",
+                buttonClass({ size: "sm", variant: "primary", className: "shrink-0 px-2.5 sm:px-3" })
+              )}
+              title={PRIMARY_CTA_TEXT}
             >
-              {PRIMARY_CTA_TEXT} <ArrowRight className="size-4" />
+              <span className="sm:hidden">Demo</span>
+              <span className="hidden sm:inline">Book demo</span>{" "}
+              <ArrowRight className="size-4 shrink-0" />
+            </Link>
+            <Link
+              href={PRIMARY_CTA_HREF}
+              className={cn(
+                "hidden lg:inline-flex",
+                buttonClass({ size: "default", variant: "primary", className: "max-w-[min(100%,20rem)]" })
+              )}
+              title={PRIMARY_CTA_TEXT}
+            >
+              <span className="truncate">{PRIMARY_CTA_TEXT}</span> <ArrowRight className="size-4 shrink-0" />
             </Link>
             <a
               href="#pricing"
-              className={cn("md:hidden", buttonClass({ size: "default", variant: "secondary" }))}
+              title="View pricing"
+              className={cn("md:hidden", buttonClass({ size: "sm", variant: "secondary", className: "px-2 sm:px-4" }))}
             >
-              Pricing <ChevronRight className="size-4" />
+              <span className="sm:hidden">Plans</span>
+              <span className="hidden sm:inline">Pricing</span> <ChevronRight className="size-4 shrink-0" />
             </a>
           </div>
         </div>
       </div>
     </header>
+  );
+}
+
+function MobileNavRow({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a
+      href={href}
+      className="rounded-xl px-3 py-2.5 text-sm font-semibold text-text-primary transition hover:bg-bg-surface"
+    >
+      {children}
+    </a>
   );
 }
 
@@ -173,30 +234,30 @@ function Hero() {
   return (
     <section className="relative overflow-hidden">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-40 left-1/2 h-[520px] w-[920px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(15,118,110,0.18),transparent_60%)] blur-2xl" />
-        <div className="absolute -bottom-44 left-1/2 h-[520px] w-[920px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(217,119,6,0.14),transparent_60%)] blur-2xl" />
+        <div className="absolute -top-32 left-1/2 h-[min(420px,85vw)] w-[min(56rem,100%)] max-w-full -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(15,118,110,0.18),transparent_60%)] blur-2xl sm:-top-40 sm:h-[520px] sm:w-[min(920px,100%)]" />
+        <div className="absolute -bottom-36 left-1/2 h-[min(420px,85vw)] w-[min(56rem,100%)] max-w-full -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(217,119,6,0.14),transparent_60%)] blur-2xl sm:-bottom-44 sm:h-[520px] sm:w-[min(920px,100%)]" />
       </div>
 
-      <div className="section-shell pt-10 md:pt-14">
+      <div className="section-shell pt-8 sm:pt-10 md:pt-14">
         <div className="grid items-start gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-10">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge className="border border-[rgba(15,118,110,0.25)] bg-[rgba(15,118,110,0.10)] text-accent-primary">
+          <div className="min-w-0">
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <Badge className="w-full max-w-full justify-start rounded-2xl border border-[rgba(15,118,110,0.25)] bg-[rgba(15,118,110,0.10)] text-left text-accent-primary sm:w-auto">
                 The only POS that publishes your website menu
               </Badge>
-              <Badge className="border border-border-subtle bg-bg-elevated text-text-secondary">
-                <Sparkles className="mr-1.5 size-3.5 text-accent-primary" />
+              <Badge className="w-full max-w-full justify-start rounded-2xl border border-border-subtle bg-bg-elevated text-left text-text-secondary sm:w-auto">
+                <Sparkles className="mr-1.5 size-3.5 shrink-0 text-accent-primary" />
                 Restaurant OS (POS + Website)
               </Badge>
-              <Badge className="border border-border-subtle bg-bg-elevated text-text-secondary">
-                <Webhook className="mr-1.5 size-3.5 text-accent-secondary" />
+              <Badge className="w-full max-w-full justify-start rounded-2xl border border-border-subtle bg-bg-elevated text-left text-text-secondary sm:w-auto">
+                <Webhook className="mr-1.5 size-3.5 shrink-0 text-accent-secondary" />
                 POS → Website auto‑sync
               </Badge>
             </div>
 
-            <h1 className="mt-5 text-balance text-4xl leading-[1.05] tracking-[-0.04em] md:text-5xl md:leading-[1.03]">
+            <h1 className="mt-5 text-balance text-[clamp(1.28rem,5vw+0.45rem,3rem)] leading-[1.1] tracking-[-0.035em] sm:leading-[1.06] md:leading-[1.03] lg:text-5xl">
               If your website menu is wrong, you’re <span className="text-accent-primary">bleeding money</span>.
-              <br className="hidden md:block" />
+              <br className="hidden sm:block" />
               Fix it once in POS—your website updates instantly.
             </h1>
 
@@ -206,24 +267,36 @@ function Hero() {
               No peak‑hour drama.
             </p>
 
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="mt-6 flex flex-col gap-3 min-[480px]:flex-row min-[480px]:items-stretch sm:items-center">
               <Link
                 href={PRIMARY_CTA_HREF}
-                className={buttonClass({ size: "lg", variant: "primary", className: "text-sm" })}
+                className={buttonClass({
+                  size: "lg",
+                  variant: "primary",
+                  className:
+                    "w-full min-[480px]:w-auto whitespace-normal px-4 text-center text-xs leading-snug sm:text-sm"
+                })}
+                title={PRIMARY_CTA_TEXT}
               >
-                {PRIMARY_CTA_TEXT} <ArrowRight className="size-4" />
+                <span className="min-[480px]:hidden">{PRIMARY_CTA_TEXT_SHORT}</span>
+                <span className="hidden min-[480px]:inline">{PRIMARY_CTA_TEXT}</span>{" "}
+                <ArrowRight className="inline size-4 shrink-0" />
               </Link>
               <a
                 href={SECONDARY_CTA_HREF}
-                className={buttonClass({ size: "lg", variant: "secondary", className: "text-sm" })}
+                className={buttonClass({
+                  size: "lg",
+                  variant: "secondary",
+                  className: "w-full min-[480px]:w-auto whitespace-normal px-4 text-center text-xs leading-snug sm:text-sm"
+                })}
               >
-                {SECONDARY_CTA_TEXT} <MousePointerClick className="size-4" />
+                {SECONDARY_CTA_TEXT} <MousePointerClick className="inline size-4 shrink-0" />
               </a>
             </div>
 
-            <div className="mt-4 grid gap-2 rounded-2xl border border-border-subtle bg-bg-surface p-4">
+            <div className="mt-4 grid gap-2 rounded-2xl border border-border-subtle bg-bg-surface p-3 sm:p-4">
               <p className="text-sm font-semibold text-text-primary">In 15 minutes, we’ll prove 3 things (live):</p>
-              <ul className="grid gap-2 md:grid-cols-3">
+              <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 <HeroBullet
                   icon={Zap}
                   title="The sync is real"
@@ -245,7 +318,7 @@ function Hero() {
               </p>
             </div>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <MiniTrust icon={Zap} title="Menu updates in seconds" description="POS is the source of truth." />
               <MiniTrust icon={Clock} title="Training: one shift" description="Built for real service flow." />
               <MiniTrust icon={ShieldCheck} title="Reliable by design" description="Clean ops, fewer mistakes." />
@@ -266,7 +339,7 @@ function Hero() {
             <TrustStrip />
           </div>
 
-          <div className="relative" id="proof">
+          <div className="relative min-w-0" id="proof">
             <ProofWidget />
             <p className="mt-3 text-center text-xs text-text-muted">
               This is the point: <span className="font-semibold text-text-secondary">change once</span>, publish everywhere.
@@ -330,7 +403,7 @@ function TrustStrip() {
       <p className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
         For teams that can’t afford menu mistakes
       </p>
-      <div className="mt-3 grid gap-2 sm:grid-cols-4">
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {["Cafe", "Cloud kitchen", "Quick service", "Multi‑outlet"].map((t) => (
           <div
             key={t}
@@ -352,21 +425,21 @@ function ProofWidget() {
     <div className="surface-card relative overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(15,118,110,0.10),transparent_60%)]" />
 
-      <div className="relative p-5 md:p-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
+      <div className="relative p-4 sm:p-5 md:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <p className="label-text">Live proof</p>
             <p className="mt-1 text-sm font-semibold text-text-primary">
               Edit in POS → Website updates instantly
             </p>
           </div>
-          <Badge className="border border-border-subtle bg-bg-surface text-text-secondary">
+          <Badge className="w-fit shrink-0 border border-border-subtle bg-bg-surface text-text-secondary">
             <Zap className="mr-1.5 size-3.5 text-accent-primary" />
             Updated in 2s
           </Badge>
         </div>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold text-text-secondary">POS</p>
@@ -423,7 +496,7 @@ function ProofWidget() {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <ProofToggle label="Price change" active />
           <ProofToggle label="Sold out toggle" />
           <ProofToggle label="New item" />
@@ -445,22 +518,22 @@ function ProofRow({
   highlight?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-white px-3 py-2">
-      <div className="flex items-center gap-2">
+    <div className="flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-border-subtle bg-white px-3 py-2 sm:gap-3">
+      <div className="flex min-w-0 items-center gap-2">
         <span
           className={cn(
-            "grid size-9 place-items-center rounded-xl",
+            "grid size-9 shrink-0 place-items-center rounded-xl",
             highlight ? "bg-[rgba(217,119,6,0.12)] text-accent-secondary" : "bg-[rgba(15,118,110,0.10)] text-accent-primary"
           )}
         >
           <Icon className="size-4" />
         </span>
-        <div className="leading-tight">
+        <div className="min-w-0 leading-tight">
           <p className="text-xs font-semibold text-text-primary">{label}</p>
-          <p className="text-[0.75rem] text-text-muted">{value}</p>
+          <p className="break-words text-[0.75rem] text-text-muted">{value}</p>
         </div>
       </div>
-      <Check className="size-4 text-success" />
+      <Check className="size-4 shrink-0 text-success" />
     </div>
   );
 }
@@ -485,12 +558,12 @@ function WebsiteItem({
         soldOut ? "opacity-70" : "hover:-translate-y-[1px] hover:shadow-soft"
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div className="flex min-w-0 items-start justify-between gap-2 sm:gap-3">
+        <div className="min-w-0">
           <p className="text-sm font-semibold text-text-primary">{name}</p>
           <p className="mt-0.5 text-xs text-text-muted">{description}</p>
         </div>
-        <div className="text-right">
+        <div className="shrink-0 text-right">
           <p className="text-sm font-semibold text-text-primary">₹{price}</p>
           <span
             className={cn(
@@ -514,16 +587,16 @@ function ProofToggle({ label, active }: { label: string; active?: boolean }) {
   return (
     <div
       className={cn(
-        "flex items-center justify-between rounded-2xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm font-semibold transition",
+        "flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-border-subtle bg-bg-surface px-3 py-3 text-sm font-semibold transition sm:px-4",
         active
           ? "border-[rgba(15,118,110,0.35)] bg-[rgba(15,118,110,0.08)] text-text-primary"
           : "text-text-secondary hover:border-border-strong"
       )}
     >
-      <span className="truncate">{label}</span>
+      <span className="min-w-0 flex-1 break-words leading-snug">{label}</span>
       <span
         className={cn(
-          "ml-3 inline-flex h-6 w-10 items-center rounded-full p-1",
+          "ml-0 inline-flex h-6 w-10 shrink-0 items-center rounded-full p-1 sm:ml-1",
           active ? "bg-accent-primary" : "bg-[rgba(142,136,126,0.35)]"
         )}
       >
@@ -579,16 +652,18 @@ function HardPain() {
     <section className="section-shell">
       <div className="surface-card relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(180,35,24,0.08),transparent_60%)]" />
-        <div className="relative grid gap-6 p-6 md:p-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
-          <div>
+        <div className="relative grid gap-5 p-4 sm:gap-6 sm:p-6 md:p-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
+          <div className="min-w-0">
             <p className="label-text">Hard pain (what owners won’t say out loud)</p>
-            <h2 className="mt-2 text-balance">Your menu changes daily. Your website lies daily.</h2>
-            <p className="mt-2 text-pretty text-sm leading-6">
+            <h2 className="mt-2 text-balance text-xl font-bold leading-snug tracking-[-0.02em] text-text-primary sm:text-2xl sm:leading-tight md:text-3xl md:leading-tight">
+              Your menu changes daily. Your website lies daily.
+            </h2>
+            <p className="mt-2 text-pretty text-sm leading-6 sm:text-base sm:leading-7">
               Every mismatch costs you: refunds, counter arguments, staff stress, and reviews you can’t undo. In India,
               one wrong price during rush hour becomes a scene. This isn’t a “website issue.” It’s a revenue leak.
             </p>
           </div>
-          <div className="grid gap-3">
+          <div className="grid min-w-0 gap-3">
             {[
               "A customer arrives for an item that’s sold out online.",
               "A promo price is live in POS… but not on the website.",
@@ -597,15 +672,15 @@ function HardPain() {
             ].map((line) => (
               <div
                 key={line}
-                className="flex items-start gap-3 rounded-2xl border border-border-subtle bg-bg-surface px-4 py-3"
+                className="flex min-w-0 items-start gap-3 rounded-2xl border border-border-subtle bg-bg-surface px-3 py-3 sm:px-4"
               >
-                <span className="mt-0.5 grid size-7 place-items-center rounded-xl bg-[rgba(180,35,24,0.10)] text-danger">
+                <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-xl bg-[rgba(180,35,24,0.10)] text-danger">
                   <Flame className="size-4" />
                 </span>
-                <p className="text-sm font-semibold text-text-primary">{line}</p>
+                <p className="min-w-0 break-words text-sm font-semibold text-text-primary">{line}</p>
               </div>
             ))}
-            <div className="rounded-2xl border border-border-subtle bg-white p-4">
+            <div className="rounded-2xl border border-border-subtle bg-white p-3 sm:p-4">
               <p className="text-sm font-semibold text-text-primary">This is the “menu mismatch tax.”</p>
               <p className="mt-1 text-sm">
                 If your menu lives in two places, you’ll always be wrong in one of them—and customers will punish you for it.
@@ -621,20 +696,22 @@ function HardPain() {
 function OldVsNew() {
   return (
     <section className="section-shell" id="compare">
-      <div className="flex items-end justify-between gap-4">
-        <SectionHeading
-          eyebrow="Old vs new"
-          title="Most POS setups create double work. This one deletes it."
-          description="Old systems make you maintain two menus. This system makes the POS publish the website automatically—so you stop firefighting."
-        />
-        <div className="hidden md:block">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="min-w-0">
+          <SectionHeading
+            eyebrow="Old vs new"
+            title="Most POS setups create double work. This one deletes it."
+            description="Old systems make you maintain two menus. This system makes the POS publish the website automatically—so you stop firefighting."
+          />
+        </div>
+        <div className="hidden shrink-0 md:block">
           <Link href={PRIMARY_CTA_HREF} className={buttonClass({ variant: "primary" })}>
             {PRIMARY_CTA_TEXT} <ArrowRight className="size-4" />
           </Link>
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
         <Card className="overflow-hidden">
           <CardHeader>
             <CardTitle className="text-base">Old system (what you’re doing now)</CardTitle>
@@ -801,11 +878,11 @@ function OutcomePill({
 
 function FlowRow({ left, right }: { left: string; right: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-white px-4 py-3">
+    <div className="flex flex-col gap-2 rounded-2xl border border-border-subtle bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
       <span className="text-sm font-semibold text-text-primary">{left}</span>
       <span className="inline-flex items-center gap-2 text-sm font-semibold text-text-secondary">
-        <ArrowRight className="size-4 text-accent-primary" />
-        {right}
+        <ArrowRight className="size-4 shrink-0 text-accent-primary" />
+        <span className="min-w-0">{right}</span>
       </span>
     </div>
   );
@@ -816,10 +893,12 @@ function UniqueMechanism() {
     <section className="section-shell">
       <div className="surface-card overflow-hidden">
         <div className="grid gap-0 lg:grid-cols-2">
-          <div className="p-6 md:p-8">
+          <div className="p-4 sm:p-6 md:p-8">
             <p className="label-text">Unique mechanism</p>
-            <h2 className="mt-2 text-balance">POS = source of truth. Website = auto‑published.</h2>
-            <p className="mt-2 text-pretty">
+            <h2 className="mt-2 text-balance text-xl font-bold leading-snug tracking-[-0.02em] text-text-primary sm:text-2xl sm:leading-tight md:text-3xl md:leading-tight">
+              POS = source of truth. Website = auto‑published.
+            </h2>
+            <p className="mt-2 text-pretty text-sm leading-6 sm:text-base sm:leading-7">
               Most setups treat your website like a separate project. So your menu lives in two places… and reality breaks the
               moment you change anything.
             </p>
@@ -837,7 +916,7 @@ function UniqueMechanism() {
             </div>
           </div>
 
-          <div className="relative border-t border-border-subtle bg-[linear-gradient(180deg,rgba(15,118,110,0.06),transparent_55%)] p-6 md:p-8 lg:border-l lg:border-t-0">
+          <div className="relative border-t border-border-subtle bg-[linear-gradient(180deg,rgba(15,118,110,0.06),transparent_55%)] p-4 sm:p-6 md:p-8 lg:border-l lg:border-t-0">
             <div className="grid gap-4">
               <Card className="transition hover:-translate-y-[1px] hover:shadow-soft">
                 <CardHeader className="flex flex-row items-start gap-3">
@@ -951,13 +1030,15 @@ function Features() {
 
   return (
     <section className="section-shell" id="features">
-      <div className="flex items-end justify-between gap-4">
-        <SectionHeading
-          eyebrow="Outcomes, not features"
-          title="Everything here buys back time—and removes mistakes."
-          description="Built to reduce refunds, speed up service, and keep every channel aligned automatically."
-        />
-        <div className="hidden md:block">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="min-w-0">
+          <SectionHeading
+            eyebrow="Outcomes, not features"
+            title="Everything here buys back time—and removes mistakes."
+            description="Built to reduce refunds, speed up service, and keep every channel aligned automatically."
+          />
+        </div>
+        <div className="hidden shrink-0 md:block">
           <a href="#pricing" className={buttonClass({ variant: "secondary" })}>
             See pricing <ChevronRight className="size-4" />
           </a>
@@ -1026,7 +1107,7 @@ function HowItWorks() {
         description="It feels simple because it is: one menu, one system, always aligned."
       />
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+      <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {steps.map((s, idx) => (
           <Card key={s.title} className="relative overflow-hidden">
             <div className="absolute right-4 top-4 text-xs font-semibold text-text-muted">
@@ -1043,13 +1124,21 @@ function HowItWorks() {
         ))}
       </div>
 
-      <div className="mt-6 flex flex-col items-stretch justify-between gap-3 rounded-2xl border border-border-subtle bg-bg-surface p-5 md:flex-row md:items-center">
-        <div>
+      <div className="mt-6 flex flex-col items-stretch justify-between gap-3 rounded-2xl border border-border-subtle bg-bg-surface p-4 sm:p-5 md:flex-row md:items-center">
+        <div className="min-w-0">
           <p className="text-sm font-semibold text-text-primary">Want to see it with your real menu?</p>
           <p className="mt-1 text-sm">In the demo, we’ll show a live POS edit updating a live website instantly.</p>
         </div>
-        <Link href={PRIMARY_CTA_HREF} className={buttonClass({ size: "default", variant: "primary", className: "h-11 px-5" })}>
-          Book a 15‑minute demo <ArrowRight className="size-4" />
+        <Link
+          href={PRIMARY_CTA_HREF}
+          className={buttonClass({
+            size: "default",
+            variant: "primary",
+            className: "h-11 w-full shrink-0 px-5 text-center whitespace-normal sm:w-auto"
+          })}
+          title={PRIMARY_CTA_TEXT}
+        >
+          Book a 15‑minute demo <ArrowRight className="inline size-4 shrink-0" />
         </Link>
       </div>
     </section>
@@ -1086,19 +1175,17 @@ function Testimonials() {
           title="Owners don’t want another tool. They want less chaos."
           description="These are the outcomes restaurants care about: fewer mistakes, faster flow, and a website that stays correct."
         />
-        <div className="hidden md:block">
-          <div className="flex items-center gap-2 text-xs text-text-muted">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-bg-surface px-3 py-1.5">
-              <Clock className="size-4 text-accent-primary" /> Setup in days (typical)
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-bg-surface px-3 py-1.5">
-              <ShieldCheck className="size-4 text-success" /> Guided onboarding
-            </span>
-          </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted md:max-w-[min(100%,24rem)] md:justify-end">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-bg-surface px-3 py-1.5">
+            <Clock className="size-4 shrink-0 text-accent-primary" /> Setup in days (typical)
+          </span>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-bg-surface px-3 py-1.5">
+            <ShieldCheck className="size-4 shrink-0 text-success" /> Guided onboarding
+          </span>
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+      <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {quotes.map((q) => (
           <Card key={q.name} className="group transition hover:-translate-y-[1px] hover:shadow-soft">
             <CardHeader>
@@ -1181,7 +1268,7 @@ function Pricing() {
     {
       name: "Starter",
       tagline: "Get clean & live",
-      price: "From ₹4,999",
+      price: "From ₹799",
       highlight: false,
       description: "For small cafes and single counters that want less chaos.",
       features: ["POS essentials (orders + billing)", "Website menu sync", "Basic reports", "Standard support"],
@@ -1190,7 +1277,7 @@ function Pricing() {
     {
       name: "Growth",
       tagline: "Run like a pro",
-      price: "From ₹9,999",
+      price: "From ₹1,200",
       highlight: true,
       description: "For busy locations that change menus often and need control.",
       features: [
@@ -1207,7 +1294,7 @@ function Pricing() {
     {
       name: "Scale",
       tagline: "Central command",
-      price: "Let’s talk",
+      price: "From ₹2,000",
       highlight: false,
       description: "For multi‑outlet groups and cloud kitchens.",
       features: [
@@ -1238,7 +1325,7 @@ function Pricing() {
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+      <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {plans.map((p) => (
           <Card
             key={p.name}
@@ -1264,11 +1351,13 @@ function Pricing() {
                 ) : null}
               </div>
 
-              <div className="mt-4 flex items-end justify-between">
+              <div className="mt-4 flex flex-wrap items-end justify-between gap-2 gap-y-1">
                 <p className="text-2xl font-extrabold tracking-[-0.02em] text-text-primary">
                   {p.price}
                 </p>
-                <p className="text-xs text-text-muted">{p.name === "Scale" ? "multi‑outlet" : "/ month / location"}</p>
+                <p className="max-w-[12rem] text-right text-xs text-text-muted sm:max-w-none">
+                  {p.name === "Scale" ? "multi‑outlet" : "/ month / location"}
+                </p>
               </div>
               <p className="mt-2 text-sm">{p.description}</p>
             </CardHeader>
@@ -1286,8 +1375,11 @@ function Pricing() {
               </ul>
 
               <div className="mt-5">
-                <Link href={PRIMARY_CTA_HREF} className={cn("w-full", buttonClass({ variant: "primary" }))}>
-                  {p.cta} <ArrowRight className="size-4" />
+                <Link
+                  href={PRIMARY_CTA_HREF}
+                  className={cn("w-full whitespace-normal text-center leading-snug", buttonClass({ variant: "primary" }))}
+                >
+                  {p.cta} <ArrowRight className="inline size-4 shrink-0" />
                 </Link>
                 <p className="mt-2 text-center text-xs text-text-muted">Bring your real menu. We’ll demo the sync live.</p>
               </div>
@@ -1353,14 +1445,14 @@ function FAQ() {
           description="If you’re thinking it, you’re not alone. Here’s the straight answer."
         />
 
-        <div className="space-y-3">
+        <div className="min-w-0 space-y-3">
           {faqs.map((f) => (
             <details
               key={f.q}
-              className="group rounded-2xl border border-border-subtle bg-bg-surface px-4 py-3 transition hover:border-border-strong"
+              className="group min-w-0 w-full max-w-full rounded-2xl border border-border-subtle bg-bg-surface px-3 py-3 transition hover:border-border-strong sm:px-4"
             >
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
-                <span className="text-sm font-semibold text-text-primary">{f.q}</span>
+              <summary className="flex cursor-pointer list-none items-start justify-between gap-2 sm:items-center sm:gap-3">
+                <span className="min-w-0 flex-1 text-pretty text-sm font-semibold text-text-primary">{f.q}</span>
                 <span className="grid size-9 place-items-center rounded-xl border border-border-subtle bg-bg-elevated text-text-secondary transition group-open:rotate-90">
                   <ChevronRight className="size-4" />
                 </span>
@@ -1379,23 +1471,36 @@ function FinalCTA() {
     <section className="section-shell" id="cta">
       <div className="surface-card relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(15,118,110,0.12),transparent_60%)]" />
-        <div className="relative p-6 md:p-10">
+        <div className="relative p-4 sm:p-6 md:p-10">
           <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
-            <div>
+            <div className="min-w-0">
               <p className="label-text">Final CTA</p>
-              <h2 className="mt-2 text-balance text-3xl leading-[1.1] tracking-[-0.03em] md:text-4xl">
+              <h2 className="mt-2 text-balance text-xl leading-[1.15] tracking-[-0.03em] sm:text-2xl sm:leading-[1.12] md:text-3xl lg:text-4xl">
                 Watch your menu update live in seconds—then decide.
               </h2>
               <p className="mt-2 text-pretty text-base leading-7">
                 No commitment. No pressure. Just proof. Bring your real menu—we’ll show the POS edit syncing to a live website instantly.
               </p>
 
-              <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-                <Link href={PRIMARY_CTA_HREF} className={buttonClass({ size: "lg", variant: "primary", className: "px-5" })}>
-                  {PRIMARY_CTA_TEXT} <ArrowRight className="size-4" />
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <Link
+                  href={PRIMARY_CTA_HREF}
+                  className={buttonClass({
+                    size: "lg",
+                    variant: "primary",
+                    className:
+                      "w-full whitespace-normal px-5 text-center text-xs leading-snug sm:w-auto sm:text-sm"
+                  })}
+                  title={PRIMARY_CTA_TEXT}
+                >
+                  <span className="sm:hidden">{PRIMARY_CTA_TEXT_SHORT}</span>
+                  <span className="hidden sm:inline">{PRIMARY_CTA_TEXT}</span> <ArrowRight className="inline size-4 shrink-0" />
                 </Link>
-                <a href="#pricing" className={buttonClass({ size: "lg", variant: "secondary", className: "px-5" })}>
-                  Compare plans <ChevronRight className="size-4" />
+                <a
+                  href="#pricing"
+                  className={buttonClass({ size: "lg", variant: "secondary", className: "w-full px-5 text-center sm:w-auto" })}
+                >
+                  Compare plans <ChevronRight className="inline size-4 shrink-0" />
                 </a>
               </div>
             </div>
@@ -1436,15 +1541,15 @@ function CTAProofRow({
 
 function MobileStickyCTA() {
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border-subtle bg-[rgba(255,253,249,0.92)] p-3 backdrop-blur supports-[backdrop-filter]:bg-[rgba(255,253,249,0.78)] md:hidden">
-      <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-3 px-4">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-text-primary">Update once. Sync everywhere.</p>
-          <p className="truncate text-xs text-text-muted">See the sync live in 15 minutes.</p>
+    <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border-subtle bg-[rgba(255,253,249,0.92)] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left,0px))] pr-[max(0.75rem,env(safe-area-inset-right,0px))] pt-3 backdrop-blur supports-[backdrop-filter]:bg-[rgba(255,253,249,0.78)] md:hidden">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-3 min-[360px]:flex-row min-[360px]:flex-wrap min-[360px]:items-center min-[360px]:justify-between min-[360px]:gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-text-primary">Update once. Sync everywhere.</p>
+          <p className="text-xs text-text-muted">See the sync live in 15 minutes.</p>
         </div>
         <a
           href={PRIMARY_CTA_HREF}
-          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-accent-primary px-4 text-sm font-semibold text-white shadow-soft transition hover:bg-accent-primary-hover active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/25"
+          className="inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-accent-primary px-4 text-sm font-semibold text-white shadow-soft transition hover:bg-accent-primary-hover active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/25 min-[360px]:w-auto"
         >
           See live <ArrowRight className="size-4" />
         </a>

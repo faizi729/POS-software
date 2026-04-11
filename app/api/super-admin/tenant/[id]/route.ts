@@ -4,6 +4,7 @@ import { Types } from "mongoose";
 
 import { connectToDatabase } from "@/lib/db/connect";
 import { getSuperAdminSession } from "@/lib/auth/get-super-admin-session";
+import { assertCanMutate } from "@/lib/auth/super-admin-permissions";
 import { Restaurant } from "@/models/Restaurant";
 import { AuditLog } from "@/models/AuditLog";
 import { getClientIp, rateLimit } from "@/lib/middleware/rate-limit";
@@ -11,11 +12,17 @@ import { getClientIp, rateLimit } from "@/lib/middleware/rate-limit";
 const patchSchema = z.object({
   name: z.string().min(2).optional(),
   status: z.enum(["active", "suspended"]).optional(),
-  plan: z.enum(["starter", "growth", "scale"]).optional(),
+  plan: z.enum(["none", "starter", "growth", "scale"]).optional(),
+  subscriptionStatus: z.enum(["trial", "active", "past_due", "suspended", "churned"]).optional(),
+  trialEndsAt: z.string().nullable().optional(),
+  billingEmail: z.union([z.string().email(), z.literal("")]).optional(),
+  notesInternal: z.string().max(8000).optional(),
   features: z
     .object({
       websiteSync: z.boolean().optional(),
-      aiFeatures: z.boolean().optional()
+      aiFeatures: z.boolean().optional(),
+      whatsappOrdering: z.boolean().optional(),
+      qrOrdering: z.boolean().optional()
     })
     .optional()
 });
@@ -40,25 +47,67 @@ export async function GET(_: NextRequest, ctx: { params: Promise<{ id: string }>
   if (!oid) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
 
   const t = await Restaurant.findById(oid)
-    .select({ name: 1, slug: 1, status: 1, plan: 1, features: 1, createdAt: 1, settings: 1, currency: 1, timezone: 1 })
+    .select({
+      name: 1,
+      slug: 1,
+      status: 1,
+      plan: 1,
+      subscriptionStatus: 1,
+      trialEndsAt: 1,
+      billingEmail: 1,
+      notesInternal: 1,
+      features: 1,
+      createdAt: 1,
+      settings: 1,
+      currency: 1,
+      timezone: 1,
+      subdomain: 1,
+      customDomain: 1,
+      contact: 1,
+      razorpayCustomerId: 1,
+      razorpaySubscriptionId: 1
+    })
     .lean();
   if (!t) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  const tx = t as any;
   return NextResponse.json({
     tenant: {
       id: t._id.toString(),
       name: t.name,
       slug: t.slug,
       status: t.status,
-      plan: (t as any).plan ?? "growth",
-      features: (t as any).features ?? { websiteSync: true, aiFeatures: false },
-      createdAt: (t as any).createdAt?.toISOString?.()
+      plan: tx.plan ?? "none",
+      subscriptionStatus: tx.subscriptionStatus ?? "active",
+      trialEndsAt: tx.trialEndsAt?.toISOString?.() ?? null,
+      billingEmail: tx.billingEmail ?? "",
+      notesInternal: tx.notesInternal ?? "",
+      features: tx.features ?? {
+        websiteSync: true,
+        aiFeatures: false,
+        whatsappOrdering: true,
+        qrOrdering: true
+      },
+      createdAt: tx.createdAt?.toISOString?.(),
+      timezone: tx.timezone,
+      currency: tx.currency,
+      subdomain: tx.subdomain ?? "",
+      customDomain: tx.customDomain ?? "",
+      contact: tx.contact ?? {},
+      razorpayCustomerId: tx.razorpayCustomerId ?? "",
+      razorpaySubscriptionId: tx.razorpaySubscriptionId ?? ""
     }
   });
 }
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const sa = await getSuperAdminSession();
+  try {
+    assertCanMutate(sa, "tenant_write");
+  } catch (e: any) {
+    if (e?.statusCode === 403) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    throw e;
+  }
   const rl = await rateLimit({
     request: req,
     keyParts: ["sa-tenant-patch", getClientIp(req)],
@@ -81,10 +130,24 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const set: any = {};
   if (parsed.data.name) set.name = parsed.data.name;
   if (parsed.data.status) set.status = parsed.data.status;
-  if (parsed.data.plan) set.plan = parsed.data.plan;
+  if (parsed.data.plan !== undefined) set.plan = parsed.data.plan;
+  if (parsed.data.subscriptionStatus) set.subscriptionStatus = parsed.data.subscriptionStatus;
+  if (parsed.data.trialEndsAt !== undefined) {
+    const raw = parsed.data.trialEndsAt;
+    if (!raw || String(raw).trim() === "") set.trialEndsAt = null;
+    else {
+      const d = new Date(raw);
+      set.trialEndsAt = Number.isNaN(d.getTime()) ? null : d;
+    }
+  }
+  if (parsed.data.billingEmail !== undefined) set.billingEmail = parsed.data.billingEmail || "";
+  if (parsed.data.notesInternal !== undefined) set.notesInternal = parsed.data.notesInternal;
   if (parsed.data.features) {
     if (typeof parsed.data.features.websiteSync === "boolean") set["features.websiteSync"] = parsed.data.features.websiteSync;
     if (typeof parsed.data.features.aiFeatures === "boolean") set["features.aiFeatures"] = parsed.data.features.aiFeatures;
+    if (typeof parsed.data.features.whatsappOrdering === "boolean")
+      set["features.whatsappOrdering"] = parsed.data.features.whatsappOrdering;
+    if (typeof parsed.data.features.qrOrdering === "boolean") set["features.qrOrdering"] = parsed.data.features.qrOrdering;
   }
 
   const updated = await Restaurant.findByIdAndUpdate(oid, { $set: set }, { new: true }).lean();
@@ -117,6 +180,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
 export async function DELETE(_: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const sa = await getSuperAdminSession();
+  try {
+    assertCanMutate(sa, "tenant_write");
+  } catch (e: any) {
+    if (e?.statusCode === 403) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    throw e;
+  }
   const rl = await rateLimit({
     request: _,
     keyParts: ["sa-tenant-delete", getClientIp(_)],

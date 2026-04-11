@@ -1,6 +1,8 @@
+import type { PlatformRole } from "./platform-role";
+
 export type SuperAdminSession = {
   platformUserId: string;
-  role: "super_admin";
+  role: PlatformRole;
   email: string;
   name: string;
 };

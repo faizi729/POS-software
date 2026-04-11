@@ -1,5 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 
+import type { PlatformRole } from "./platform-role";
+
 const encoder = new TextEncoder();
 
 function getSecret() {
@@ -10,7 +12,7 @@ function getSecret() {
 
 export type SuperAdminJwtPayload = {
   platformUserId: string;
-  role: "super_admin";
+  role: PlatformRole;
   email: string;
   name: string;
 };
