@@ -6,6 +6,9 @@ import { LogOut } from "lucide-react";
 import { getSuperAdminSession } from "@/lib/auth/get-super-admin-session";
 import { SuperAdminSidebar } from "@/components/super-admin/super-admin-sidebar";
 
+/** Child routes query MongoDB; skip build-time prerender (CI often has no DB or wrong creds). */
+export const dynamic = "force-dynamic";
+
 export default async function SuperAdminProtectedLayout({ children }: { children: React.ReactNode }) {
   const session = await getSuperAdminSession().catch(() => null);
   if (!session) redirect("/super-admin/login");
