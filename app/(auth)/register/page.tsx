@@ -61,7 +61,24 @@ export default function RegisterPage() {
       if (!res.ok) {
         throw new Error(data?.error || "Failed to register");
       }
-      toast.success("Workspace created", { durationMs: 2400 });
+      const mail = data?.welcomeEmail as { sent?: boolean; reason?: string } | undefined;
+      if (mail && mail.sent === false) {
+        if (mail.reason === "smtp_not_configured") {
+          toast.success("Workspace created", {
+            message:
+              "Welcome email was not sent — set SMTP_HOST and SMTP_FROM on your server (e.g. in Vercel env vars).",
+            durationMs: 6500
+          });
+        } else {
+          toast.success("Workspace created", {
+            message:
+              "Welcome email could not be sent — check server logs, SMTP credentials, and spam. You can still sign in.",
+            durationMs: 5500
+          });
+        }
+      } else {
+        toast.success("Workspace created", { durationMs: 2400 });
+      }
       const rid = data?.restaurant?.id;
       window.location.href = "/onboarding" + (rid ? `?rid=${encodeURIComponent(rid)}` : "");
     } catch (err: unknown) {

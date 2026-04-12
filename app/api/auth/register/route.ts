@@ -64,14 +64,29 @@ export async function POST(req: NextRequest) {
       twoFactorEnabled
     });
 
+    let welcomeEmail: { sent: boolean; reason?: "smtp_not_configured" | "send_failed" } = {
+      sent: false,
+      reason: "smtp_not_configured"
+    };
     if (mailOk) {
       const { subject, text, html } = buildWelcomeEmail({
         restaurantName,
         slug: restaurantSlug,
         twoFactorEnabled
       });
-      await sendMail({ to: email, subject, text, html }).catch((err) =>
-        console.error("[auth][register] welcome email failed", err)
+      try {
+        const mailed = await sendMail({ to: email, subject, text, html });
+        welcomeEmail =
+          mailed.skipped === true
+            ? { sent: false, reason: "smtp_not_configured" }
+            : { sent: true };
+      } catch {
+        welcomeEmail = { sent: false, reason: "send_failed" };
+      }
+    } else if (process.env.NODE_ENV === "production") {
+      console.warn(
+        "[auth][register] welcome email skipped: SMTP_HOST and SMTP_FROM are not both set in this environment. " +
+          "Add them in your host’s env settings (e.g. Vercel → Settings → Environment Variables)."
       );
     }
 
@@ -87,7 +102,8 @@ export async function POST(req: NextRequest) {
       {
         ok: true,
         restaurant: { id: restaurant._id.toString(), slug: restaurant.slug },
-        user: { id: owner._id.toString(), email: owner.email }
+        user: { id: owner._id.toString(), email: owner.email },
+        welcomeEmail
       },
       { status: 201 }
     );
