@@ -1,12 +1,15 @@
- "use client";
+"use client";
+
 import { ArrowRight, Loader2 } from "lucide-react";
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { toast } from "@/lib/toast";
 
 export default function RegisterPage() {
@@ -14,9 +17,9 @@ export default function RegisterPage() {
   const [restaurantSlug, setRestaurantSlug] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [enableEmailTwoFactor, setEnableEmailTwoFactor] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{
     restaurantName?: string;
     restaurantSlug?: string;
@@ -31,7 +34,9 @@ export default function RegisterPage() {
     if (!restaurantName.trim()) nextErrors.restaurantName = "Restaurant name is required.";
     if (!restaurantSlug.trim()) nextErrors.restaurantSlug = "Workspace slug is required.";
     if (!email.trim()) nextErrors.email = "Owner email is required.";
-    if (!password.trim() || password.trim().length < 6) nextErrors.password = "Password must be at least 6 characters.";
+    if (!password.trim() || password.trim().length < 8) {
+      nextErrors.password = "Password must be at least 8 characters.";
+    }
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
       toast.error("Fix the highlighted fields", { durationMs: 2600 });
@@ -40,24 +45,29 @@ export default function RegisterPage() {
 
     setLoading(true);
     setError(null);
-    setSuccess(null);
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ restaurantName, restaurantSlug, email, password })
+        body: JSON.stringify({
+          restaurantName,
+          restaurantSlug,
+          email,
+          password,
+          enableEmailTwoFactor
+        })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data?.error || "Failed to register");
       }
       toast.success("Workspace created", { durationMs: 2400 });
-      // Redirect to onboarding
       const rid = data?.restaurant?.id;
       window.location.href = "/onboarding" + (rid ? `?rid=${encodeURIComponent(rid)}` : "");
-    } catch (err: any) {
-      setError(err.message || "Something went wrong");
-      toast.error("Couldn’t create workspace", { message: err?.message || "Try again", durationMs: 3400 });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Something went wrong";
+      setError(message);
+      toast.error("Couldn’t create workspace", { message, durationMs: 3400 });
     } finally {
       setLoading(false);
     }
@@ -123,24 +133,39 @@ export default function RegisterPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={loading}
+                  autoComplete="email"
                   aria-invalid={Boolean(fieldErrors.email)}
                 />
                 <FieldError message={fieldErrors.email} />
               </div>
               <div className="space-y-2">
                 <label className="label-text">Password</label>
-                <Input
-                  type="password"
+                <PasswordInput
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading}
+                  autoComplete="new-password"
                   aria-invalid={Boolean(fieldErrors.password)}
                 />
                 <FieldError message={fieldErrors.password} />
               </div>
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border-subtle bg-bg-surface px-3 py-3 text-sm text-text-secondary">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 accent-accent-primary"
+                  checked={enableEmailTwoFactor}
+                  onChange={(e) => setEnableEmailTwoFactor(e.target.checked)}
+                  disabled={loading}
+                />
+                <span>
+                  <span className="font-semibold text-text-primary">Email sign-in codes (recommended)</span>
+                  <br />
+                  When your server has SMTP configured, we will email you a code on each login. You will also receive a
+                  welcome email after registration.
+                </span>
+              </label>
               {error ? <p className="text-sm text-red-600">{error}</p> : null}
-              {success ? <p className="text-sm text-green-600">{success}</p> : null}
               <Button
                 className="mt-2 w-full justify-between"
                 size="lg"
@@ -169,4 +194,3 @@ export default function RegisterPage() {
     </main>
   );
 }
-

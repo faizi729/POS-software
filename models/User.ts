@@ -12,7 +12,14 @@ const userSchema = new Schema(
       required: true
     },
     status: { type: String, enum: ["active", "invited", "disabled"], default: "active" },
-    lastLoginAt: Date
+    lastLoginAt: Date,
+    /** Email OTP on sign-in (tenant users). */
+    twoFactorEnabled: { type: Boolean, default: false },
+    twoFactorOtpHash: { type: String, trim: true, sparse: true },
+    twoFactorOtpExpires: { type: Date, sparse: true },
+    /** Password reset (raw token is emailed; only SHA-256 hex is stored). */
+    passwordResetTokenHash: { type: String, trim: true, sparse: true },
+    passwordResetExpires: { type: Date, sparse: true }
   },
   { timestamps: true }
 );

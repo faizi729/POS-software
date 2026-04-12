@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/db/connect";
 import { Restaurant } from "@/models/Restaurant";
 import { User } from "@/models/User";
-import { verifyPassword } from "@/lib/auth/password";
-import { signAuthJwt } from "@/lib/auth/jwt";
+import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { signAuthJwt, signPendingTwoFactorJwt } from "@/lib/auth/jwt";
+import { generateSixDigitOtp } from "@/lib/auth/otp";
+import { isMailConfigured, sendMail } from "@/lib/email/send-mail";
+import { buildLoginOtpEmail } from "@/lib/email/auth-emails";
 import { z } from "zod";
 import { getTenantSlugFromHost } from "@/lib/auth/tenant";
 import { getRequestHost, getSubdomainFromHost } from "@/lib/tenant/host";
@@ -82,12 +85,45 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
-    const token = await signAuthJwt({
+    const payload = {
       userId: user._id.toString(),
       restaurantId: restaurant._id.toString(),
       role: user.role,
       name: user.name
-    });
+    };
+
+    const need2fa = user.twoFactorEnabled === true && isMailConfigured();
+    if (need2fa) {
+      const otp = generateSixDigitOtp();
+      await User.updateOne(
+        { _id: user._id },
+        {
+          $set: {
+            twoFactorOtpHash: await hashPassword(otp),
+            twoFactorOtpExpires: new Date(Date.now() + 10 * 60 * 1000)
+          }
+        }
+      );
+      const { subject, text, html } = buildLoginOtpEmail(otp);
+      const mailed = await sendMail({ to: user.email, subject, text, html });
+      if (mailed.skipped) {
+        console.error("[auth][login] 2FA enabled but email skipped");
+        return NextResponse.json(
+          { error: "Email could not be sent. Check SMTP settings or ask an admin to disable two-factor for your account." },
+          { status: 503 }
+        );
+      }
+      const pendingToken = await signPendingTwoFactorJwt(payload);
+      return NextResponse.json({ ok: true, needsTwoFactor: true, pendingToken });
+    }
+
+    if (user.twoFactorEnabled === true && !isMailConfigured()) {
+      console.warn(
+        "[auth][login] twoFactorEnabled=true but SMTP not configured; signing in without OTP (configure SMTP_HOST / SMTP_FROM)"
+      );
+    }
+
+    const token = await signAuthJwt(payload);
 
     const res = NextResponse.json({ ok: true });
     res.cookies.set("auth_token", token, {
@@ -95,7 +131,6 @@ export async function POST(req: NextRequest) {
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
       path: "/"
-      // session cookie (no maxAge/expires): cleared when browser closes
     });
     return res;
   } catch (err) {

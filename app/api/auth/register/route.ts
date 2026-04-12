@@ -5,6 +5,8 @@ import { User } from "@/models/User";
 import { hashPassword } from "@/lib/auth/password";
 import { z } from "zod";
 import { signAuthJwt } from "@/lib/auth/jwt";
+import { isMailConfigured, sendMail } from "@/lib/email/send-mail";
+import { buildWelcomeEmail } from "@/lib/email/auth-emails";
 
 const registerSchema = z.object({
   restaurantName: z.string().min(2),
@@ -13,7 +15,9 @@ const registerSchema = z.object({
     .min(2)
     .regex(/^[a-z0-9-]+$/, "Only lowercase letters, numbers, and hyphens"),
   email: z.string().email(),
-  password: z.string().min(8)
+  password: z.string().min(8),
+  /** When false, disables email OTP for this account (only if SMTP is configured). */
+  enableEmailTwoFactor: z.boolean().optional()
 });
 
 export async function POST(req: NextRequest) {
@@ -29,7 +33,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { restaurantName, restaurantSlug, email, password } = parsed.data;
+    const { restaurantName, restaurantSlug, email, password, enableEmailTwoFactor } = parsed.data;
+    const mailOk = isMailConfigured();
+    const twoFactorEnabled = mailOk && enableEmailTwoFactor !== false;
 
     const existingRestaurant = await Restaurant.findOne({ slug: restaurantSlug });
     if (existingRestaurant) {
@@ -54,8 +60,20 @@ export async function POST(req: NextRequest) {
       email,
       passwordHash,
       role: "owner",
-      status: "active"
+      status: "active",
+      twoFactorEnabled
     });
+
+    if (mailOk) {
+      const { subject, text, html } = buildWelcomeEmail({
+        restaurantName,
+        slug: restaurantSlug,
+        twoFactorEnabled
+      });
+      await sendMail({ to: email, subject, text, html }).catch((err) =>
+        console.error("[auth][register] welcome email failed", err)
+      );
+    }
 
     // Auto sign-in after registration for onboarding
     const token = await signAuthJwt({

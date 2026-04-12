@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { toast } from "@/lib/toast";
 
 export default function SuperAdminLoginPage() {
@@ -108,12 +109,12 @@ export default function SuperAdminLoginPage() {
               </div>
               <div className="space-y-2">
                 <label className="label-text">Password</label>
-                <Input
-                  type="password"
+                <PasswordInput
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading}
+                  autoComplete="current-password"
                   aria-invalid={Boolean(fieldErrors.password)}
                 />
                 <FieldError message={fieldErrors.password} />
