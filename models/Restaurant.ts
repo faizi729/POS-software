@@ -7,8 +7,8 @@ const restaurantSchema = new Schema(
     // In multi-tenant mode, this maps 1:1 with `subdomain` (unless you decide otherwise).
     slug: { type: String, required: true, trim: true },
     // Multi-tenant domain routing
-    subdomain: { type: String, trim: true, lowercase: true, index: true }, // e.g. "restaurant1"
-    customDomain: { type: String, trim: true, lowercase: true, index: true }, // e.g. "www.restaurant.com"
+    subdomain: { type: String, trim: true, lowercase: true }, // indexed below (sparse unique)
+    customDomain: { type: String, trim: true, lowercase: true }, // indexed below (sparse unique)
     // Branding
     logoUrl: { type: String, trim: true, default: "" },
     theme: {
