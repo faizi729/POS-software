@@ -20,8 +20,34 @@ const registerSchema = z.object({
   enableEmailTwoFactor: z.boolean().optional()
 });
 
+function isDuplicateKeyError(err: unknown): err is { code: number; keyPattern?: Record<string, unknown> } {
+  const e = err as { code?: number };
+  return e?.code === 11000;
+}
+
 export async function POST(req: NextRequest) {
   try {
+    if (!process.env.MONGODB_URI?.trim()) {
+      console.error("[auth][register] MONGODB_URI is missing");
+      return NextResponse.json(
+        {
+          error:
+            "Database is not configured. Set MONGODB_URI in your server environment (e.g. hosting dashboard → Environment Variables)."
+        },
+        { status: 500 }
+      );
+    }
+    if (!process.env.JWT_SECRET?.trim()) {
+      console.error("[auth][register] JWT_SECRET is missing");
+      return NextResponse.json(
+        {
+          error:
+            "Authentication is not configured. Set JWT_SECRET to a long random string in your server environment variables."
+        },
+        { status: 500 }
+      );
+    }
+
     await connectToDatabase();
 
     const json = await req.json().catch(() => ({}));
@@ -117,6 +143,32 @@ export async function POST(req: NextRequest) {
     return res;
   } catch (err) {
     console.error("[auth][register] error", err);
+    if (isDuplicateKeyError(err)) {
+      const kp = err.keyPattern;
+      if (kp && "slug" in kp) {
+        return NextResponse.json({ error: "Restaurant slug already in use" }, { status: 409 });
+      }
+      if (kp && "restaurantId" in kp && "email" in kp) {
+        return NextResponse.json(
+          { error: "An account with this email already exists for this workspace" },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json(
+        { error: "That workspace slug or email is already registered. Try a different slug." },
+        { status: 409 }
+      );
+    }
+    const msg = err instanceof Error ? err.message : "";
+    if (/MONGODB_URI|JWT_SECRET|ECONNREFUSED|ENOTFOUND|authentication failed/i.test(msg)) {
+      return NextResponse.json(
+        {
+          error:
+            "Could not complete registration (database or auth configuration). Check MONGODB_URI, IP allowlists, and server logs."
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
