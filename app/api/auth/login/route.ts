@@ -17,8 +17,7 @@ import { getClientIp, rateLimit } from "@/lib/middleware/rate-limit";
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
-  // Dev-only escape hatch for localhost where host-based tenant resolution isn't available.
-  // In production, tenant must be derived from host/custom domain.
+  /** Used when the request host does not map to a tenant (localhost, apex domain, shared app URL). */
   restaurantSlug: z.string().optional()
 });
 
@@ -54,21 +53,20 @@ export async function POST(req: NextRequest) {
         return slugFromHost ? await resolveRestaurantIdBySlug(slugFromHost) : null;
       })());
 
-    // In production, never trust body for tenant identity.
+    // Prefer host/custom domain when it resolves to a tenant (isolation on per-tenant domains).
+    // If the host does not map to a restaurant (e.g. localhost, apex, or *.vercel.app ≠ workspace slug),
+    // fall back to the workspace slug from the body — same as the login form sends everywhere.
     let restaurantQuery: any = { status: "active" };
     if (rid) {
       restaurantQuery._id = rid;
     } else {
-      if (process.env.NODE_ENV === "production") {
-        return NextResponse.json(
-          { error: "Missing tenant host (use subdomain/custom domain)" },
-          { status: 400 }
-        );
-      }
       const slugFromBody = parsed.data.restaurantSlug?.trim().toLowerCase() || null;
       if (!slugFromBody) {
         return NextResponse.json(
-          { error: "Missing restaurant/workspace identifier" },
+          {
+            error:
+              "Missing restaurant/workspace identifier. Enter your workspace slug, or use your restaurant subdomain/custom domain."
+          },
           { status: 400 }
         );
       }
