@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Clock, Download, Search, ShoppingCart } from "lucide-react";
+import { Clock, Download, Loader2, Search, ShoppingCart } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import { Badge } from "@/components/ui/badge";
@@ -617,6 +617,8 @@ export function OrderScreenLive({
   const [orderType, setOrderType] = useState<"dine_in" | "takeaway">("dine_in");
   const [paymentMethod, setPaymentMethod] = useState("card");
   const [checkoutPaymentStatus, setCheckoutPaymentStatus] = useState<"paid" | "unpaid">("paid");
+  const [checkoutProcessing, setCheckoutProcessing] = useState(false);
+  const [printBillLoading, setPrintBillLoading] = useState(false);
   const [orderSearch, setOrderSearch] = useState("");
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>("all");
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
@@ -772,6 +774,8 @@ export function OrderScreenLive({
     }
 
     function onKeyDown(e: KeyboardEvent) {
+      if (checkoutProcessing || printBillLoading) return;
+
       // "/" -> focus menu search
       if (e.key === "/" && !isTypingTarget(e.target)) {
         e.preventDefault();
@@ -812,7 +816,16 @@ export function OrderScreenLive({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [addItem, decrementItem, incrementItem, placeOrderAndPayment, selectedCartKey, visibleItems]);
+  }, [
+    addItem,
+    checkoutProcessing,
+    decrementItem,
+    incrementItem,
+    placeOrderAndPayment,
+    printBillLoading,
+    selectedCartKey,
+    visibleItems
+  ]);
 
   // Indicate which items are already in the cart
   const itemsInCart = useMemo(() => {
@@ -895,6 +908,8 @@ export function OrderScreenLive({
     if (items.length === 0) {
       return;
     }
+    setPrintBillLoading(true);
+    try {
     const orderLabel =
       orderType === "dine_in" ? `Walk-in • Table ${tableNo}` : "Walk-in • Takeaway";
 
@@ -1013,6 +1028,9 @@ export function OrderScreenLive({
     cw.focus();
     cw.print();
     setTimeout(() => iframe.remove(), 500);
+    } finally {
+      setPrintBillLoading(false);
+    }
   }
 
   async function placeOrderAndPayment() {
@@ -1024,6 +1042,7 @@ export function OrderScreenLive({
       return;
     }
 
+    setCheckoutProcessing(true);
     try {
       const orderResponse = await fetch("/api/orders", {
         method: "POST",
@@ -1166,6 +1185,8 @@ export function OrderScreenLive({
       }
     } catch (err: any) {
       toast.error("Couldn’t place order", { message: err?.message || "Try again", durationMs: 3400 });
+    } finally {
+      setCheckoutProcessing(false);
     }
   }
 
@@ -1645,7 +1666,24 @@ export function OrderScreenLive({
             transition={{ duration: motionTokens.durations.slow, ease: motionTokens.easing }}
             className="rounded-2xl"
           >
-          <Card className="overflow-hidden border border-border-subtle bg-bg-elevated">
+          <Card className="relative overflow-hidden border border-border-subtle bg-bg-elevated">
+            {(checkoutProcessing || printBillLoading) && (
+              <div
+                className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-white/80 px-4 text-center backdrop-blur-[2px]"
+                role="status"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <Loader2 className="h-9 w-9 animate-spin text-accent-primary" aria-hidden />
+                <p className="text-sm font-semibold text-text-primary">
+                  {checkoutProcessing
+                    ? checkoutPaymentStatus === "paid"
+                      ? "Placing order & preparing bill…"
+                      : "Saving order…"
+                    : "Preparing bill…"}
+                </p>
+              </div>
+            )}
             <CardHeader className="border-b border-border-subtle bg-white">
               <p className="label-text">Order details</p>
               <CardTitle className="mt-2 text-[1.7rem] leading-9 tracking-[-0.04em] text-text-primary">
@@ -1850,21 +1888,49 @@ export function OrderScreenLive({
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <Button variant="secondary" className="h-11 rounded-2xl" onClick={() => reset()}>
+                <Button
+                  variant="secondary"
+                  className="h-11 rounded-2xl"
+                  disabled={checkoutProcessing || printBillLoading}
+                  onClick={() => reset()}
+                >
                   Clear cart
                 </Button>
                 <Button
                   className="h-11 rounded-2xl bg-accent-primary hover:bg-accent-primary-hover"
-                  disabled={isPending || items.length === 0}
+                  disabled={checkoutProcessing || printBillLoading || isPending || items.length === 0}
+                  aria-busy={checkoutProcessing}
                   onClick={placeOrderAndPayment}
                 >
-                  {checkoutPaymentStatus === "paid" ? "Charge & print bill" : "Save unpaid order"}
+                  {checkoutProcessing ? (
+                    <span className="flex w-full items-center justify-center gap-2">
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                      {checkoutPaymentStatus === "paid" ? "Processing…" : "Saving…"}
+                    </span>
+                  ) : checkoutPaymentStatus === "paid" ? (
+                    "Charge & print bill"
+                  ) : (
+                    "Save unpaid order"
+                  )}
                 </Button>
               </div>
 
               <div className="grid grid-cols-1 gap-3">
-                <Button variant="secondary" className="h-11 rounded-2xl" disabled={items.length === 0} onClick={printBill}>
-                  Print bill
+                <Button
+                  variant="secondary"
+                  className="h-11 rounded-2xl"
+                  disabled={checkoutProcessing || printBillLoading || items.length === 0}
+                  aria-busy={printBillLoading}
+                  onClick={printBill}
+                >
+                  {printBillLoading ? (
+                    <span className="flex w-full items-center justify-center gap-2">
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                      Preparing print…
+                    </span>
+                  ) : (
+                    "Print bill"
+                  )}
                 </Button>
               </div>
 
