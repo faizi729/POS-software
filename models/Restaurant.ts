@@ -23,6 +23,8 @@ const restaurantSchema = new Schema(
     timezone: { type: String, required: true },
     currency: { type: String, required: true, uppercase: true, minlength: 3, maxlength: 3 },
     status: { type: String, enum: ["active", "suspended"], default: "active" },
+    /** Enabled product modules. `pos` is the restaurant app (existing behaviour). */
+    enabledModules: { type: [String], enum: ["pos", "rooms", "banquet"], default: ["pos"] },
     /** SaaS tier for limits + billing; `none` until you assign a tier or create a Razorpay subscription. */
     plan: { type: String, enum: ["none", "starter", "growth", "scale"], default: "none", index: true },
     /** Billing lifecycle (independent of operational suspend). */
@@ -56,6 +58,22 @@ const restaurantSchema = new Schema(
       defaultPaymentMethods: [{ type: String, enum: ["cash", "card", "upi", "wallet"] }],
       openingTime: { type: String, trim: true, default: "09:00" }, // HH:mm
       closingTime: { type: String, trim: true, default: "23:00" }, // HH:mm
+      checkInTime: { type: String, trim: true, default: "14:00" }, // hotel display only
+      checkOutTime: { type: String, trim: true, default: "11:00" },
+      /**
+       * GST slab table for room nights (ceiling in paise). Empty → DEFAULT_GST_SLABS.
+       * Rates are configuration, not tax advice: verify against current GST law.
+       */
+      gstSlabs: [{ _id: false, uptoPaise: Number, percent: Number }],
+      /** Cancellation policy (hours before check-in → penalty). */
+      cancellation: {
+        freeUntilHours: { type: Number, default: 24 },
+        chargeNights: { type: Number, default: 1 },
+        chargePercent: { type: Number, default: 0 }
+      },
+      earlyCheckInFeePaise: { type: Number, default: 0, min: 0 },
+      lateCheckOutFeePaise: { type: Number, default: 0, min: 0 },
+      invoicePrefix: { type: String, trim: true, default: "INV" },
       whatsapp: {
         token: { type: String, trim: true, default: "" },
         phoneNumberId: { type: String, trim: true, default: "" },

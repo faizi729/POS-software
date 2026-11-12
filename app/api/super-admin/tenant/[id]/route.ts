@@ -17,6 +17,7 @@ const patchSchema = z.object({
   trialEndsAt: z.string().nullable().optional(),
   billingEmail: z.union([z.string().email(), z.literal("")]).optional(),
   notesInternal: z.string().max(8000).optional(),
+  enabledModules: z.array(z.enum(["pos", "rooms", "banquet"])).min(1).optional(),
   features: z
     .object({
       websiteSync: z.boolean().optional(),
@@ -57,6 +58,7 @@ export async function GET(_: NextRequest, ctx: { params: Promise<{ id: string }>
       billingEmail: 1,
       notesInternal: 1,
       features: 1,
+      enabledModules: 1,
       createdAt: 1,
       settings: 1,
       currency: 1,
@@ -82,6 +84,7 @@ export async function GET(_: NextRequest, ctx: { params: Promise<{ id: string }>
       trialEndsAt: tx.trialEndsAt?.toISOString?.() ?? null,
       billingEmail: tx.billingEmail ?? "",
       notesInternal: tx.notesInternal ?? "",
+      enabledModules: Array.isArray(tx.enabledModules) && tx.enabledModules.length ? tx.enabledModules : ["pos"],
       features: tx.features ?? {
         websiteSync: true,
         aiFeatures: false,
@@ -142,6 +145,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   }
   if (parsed.data.billingEmail !== undefined) set.billingEmail = parsed.data.billingEmail || "";
   if (parsed.data.notesInternal !== undefined) set.notesInternal = parsed.data.notesInternal;
+  if (parsed.data.enabledModules !== undefined) set.enabledModules = parsed.data.enabledModules;
   if (parsed.data.features) {
     if (typeof parsed.data.features.websiteSync === "boolean") set["features.websiteSync"] = parsed.data.features.websiteSync;
     if (typeof parsed.data.features.aiFeatures === "boolean") set["features.aiFeatures"] = parsed.data.features.aiFeatures;

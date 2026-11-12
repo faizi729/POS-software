@@ -13,7 +13,7 @@ function getSecret() {
 export type JwtPayload = {
   userId: string;
   restaurantId: string;
-  role: "owner" | "manager" | "cashier" | "staff";
+  role: "owner" | "manager" | "cashier" | "staff" | "front_desk" | "housekeeping";
   name: string;
 };
 

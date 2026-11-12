@@ -18,6 +18,7 @@ export type TenantAdminPanelInitial = {
   trialEndsAt: string | null;
   billingEmail: string;
   notesInternal: string;
+  enabledModules: string[];
   features: {
     websiteSync: boolean;
     aiFeatures: boolean;
@@ -66,6 +67,7 @@ export function TenantAdminPanel({ initial }: { initial: TenantAdminPanelInitial
   );
   const [billingEmail, setBillingEmail] = useState(initial.billingEmail);
   const [notesInternal, setNotesInternal] = useState(initial.notesInternal);
+  const [enabledModules, setEnabledModules] = useState<string[]>(initial.enabledModules ?? ["pos"]);
   const [features, setFeatures] = useState(initial.features);
 
   async function save() {
@@ -84,6 +86,7 @@ export function TenantAdminPanel({ initial }: { initial: TenantAdminPanelInitial
           trialEndsAt: trialEndsAt || null,
           billingEmail,
           notesInternal,
+          enabledModules: enabledModules.length ? enabledModules : ["pos"],
           features
         })
       });
@@ -196,6 +199,30 @@ export function TenantAdminPanel({ initial }: { initial: TenantAdminPanelInitial
               onChange={(e) => setNotesInternal(e.target.value)}
               placeholder="Contract refs, risk flags, onboarding notes…"
             />
+          </div>
+        </div>
+
+        <div>
+          <p className="text-sm font-semibold text-text-primary">Modules</p>
+          <div className="mt-3 flex flex-wrap gap-4">
+            {(["pos", "rooms", "banquet"] as const).map((module) => (
+              <label
+                key={module}
+                className="flex cursor-pointer items-center gap-2 text-sm text-text-secondary"
+              >
+                <input
+                  type="checkbox"
+                  className="size-4 accent-accent-primary"
+                  checked={enabledModules.includes(module)}
+                  onChange={(e) =>
+                    setEnabledModules((prev) =>
+                      e.target.checked ? [...new Set([...prev, module])] : prev.filter((item) => item !== module)
+                    )
+                  }
+                />
+                {module === "pos" ? "POS" : module === "rooms" ? "Rooms" : "Banquet"}
+              </label>
+            ))}
           </div>
         </div>
 

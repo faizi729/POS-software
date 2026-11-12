@@ -6,6 +6,8 @@ import { assertRole, requireSession } from "@/lib/auth/guards";
 import { slugify } from "@/lib/utils/slugify";
 import { type ImportedMenu } from "@/lib/ocr/menu-import-parser";
 import { extractMenuHybrid } from "@/lib/ocr/menu-extraction-engine";
+import { activeChatModel, activeChatProvider, chatJson } from "@/lib/ai/chat-json";
+import { isOcrConfigured, ocrDocumentFile, ocrMissingKeyMessage } from "@/lib/ocr/document-ocr";
 import { validateUploads } from "@/lib/middleware/upload-validate";
 import { fail } from "@/lib/api/response";
 import { getClientIp, rateLimit } from "@/lib/middleware/rate-limit";
@@ -17,32 +19,8 @@ import {
 } from "@/server/repositories/menu-builder-repository";
 import { MenuCategory, MenuItem } from "@/models";
 
-async function callOcrSpace(params: { apiKey: string; file: File }) {
-  const form = new FormData();
-  form.append("apikey", params.apiKey);
-  form.append("language", "eng");
-  form.append("isOverlayRequired", "false");
-  form.append("scale", "true");
-  form.append("OCREngine", "2");
-  form.append("file", params.file, params.file.name);
-
-  const response = await fetch("https://api.ocr.space/parse/image", {
-    method: "POST",
-    body: form
-  });
-
-  if (!response.ok) {
-    throw new Error(`OCR.Space request failed with ${response.status}`);
-  }
-
-  const payload = (await response.json()) as any;
-  const parsedText =
-    payload?.ParsedResults?.[0]?.ParsedText ??
-    payload?.ParsedResults?.map((r: any) => r?.ParsedText).join("\n") ??
-    "";
-
-  return { raw: payload, text: String(parsedText || "") };
-}
+/** Sarvam Vision jobs are async (create -> poll -> results); allow a long run. */
+export const maxDuration = 120;
 
 function isValidItemName(name: string) {
   const cleaned = String(name ?? "").replace(/\s+/g, " ").trim();
@@ -112,20 +90,11 @@ export async function POST(request: NextRequest) {
     });
     if (!rl.ok) return fail("Too many requests. Try again soon.", 429);
 
-    const apiKey = process.env.OCR_SPACE_API_KEY;
-    const openRouterKey = process.env.OPENROUTER_API_KEY;
-    const openRouterModel =
-      (process.env.OPENROUTER_MODEL as string | undefined) ??
-      "mistralai/mistral-small-3.1-24b-instruct";
+    const aiProvider = activeChatProvider();
+    const aiModel = activeChatModel("menu");
 
-    if (!apiKey) {
-      return ok(
-        {
-          error:
-            "OCR_SPACE_API_KEY is missing. Add it to your .env file, restart the dev server, then try again."
-        },
-        { status: 400 }
-      );
+    if (!isOcrConfigured()) {
+      return ok({ error: ocrMissingKeyMessage() }, { status: 400 });
     }
 
     const form = await request.formData();
@@ -139,14 +108,12 @@ export async function POST(request: NextRequest) {
     const valid = validateUploads({ files: [file], maxFiles: 1, maxBytesPerFile: 5 * 1024 * 1024 });
     if (!valid.ok) return fail(valid.error, 400);
 
-    const ocr = await callOcrSpace({ apiKey, file });
-    console.log("[menu/ocr/import] OCR TEXT BEFORE PARSE\n", ocr.text);
+    const ocr = await ocrDocumentFile({ file });
+    console.log(`[menu/ocr/import] OCR (${ocr.provider}) TEXT BEFORE PARSE\n`, ocr.text);
     const { menu: imported, log } = await extractMenuHybrid({
       rawOcrText: ocr.text,
       menuName,
-      openRouter: openRouterKey
-        ? { apiKey: openRouterKey, model: openRouterModel }
-        : undefined
+      ai: aiProvider === "none" ? undefined : { chatJson, provider: aiProvider, model: aiModel }
     });
     console.log("[menu/ocr/import] extraction log", log);
 
@@ -344,8 +311,14 @@ export async function POST(request: NextRequest) {
         addonGroups: createdAddonGroupCount
       },
       ai: {
-        enabled: Boolean(openRouterKey),
-        model: openRouterKey ? openRouterModel : null
+        enabled: aiProvider !== "none",
+        provider: aiProvider,
+        model: aiModel
+      },
+      ocr: {
+        provider: ocr.provider,
+        warnings: ocr.warnings,
+        jobId: ocr.jobId ?? null
       },
       workspace: nextWorkspace
     });

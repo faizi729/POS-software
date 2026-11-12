@@ -6,7 +6,7 @@ import { getTenantSlugFromHost } from "@/lib/auth/tenant";
 import { resolveRestaurantIdByHost, resolveRestaurantIdBySlug } from "@/lib/auth/tenant-resolver";
 import { getRequestHost } from "@/lib/tenant/host";
 
-type Role = "owner" | "manager" | "cashier" | "staff";
+type Role = "owner" | "manager" | "cashier" | "staff" | "front_desk" | "housekeeping";
 
 type Handler<Ctx> = (req: NextRequest, ctx: Ctx, session: Awaited<ReturnType<typeof requireSession>>) => Promise<any>;
 

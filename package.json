@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types tests/hotel.test.ts",
     "sa:create": "node scripts/create-super-admin.js",
+    "owner:reset": "node scripts/reset-owner-password.js",
+    "hotel:seed": "node scripts/hotel-seed.js",
     "sa:migrate-plan-none": "node scripts/migrate-restaurant-plan-none.js"
   },
   "dependencies": {

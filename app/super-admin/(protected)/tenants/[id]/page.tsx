@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, ShieldAlert } from "lucide-react";
+import { isValidObjectId } from "mongoose";
 
 import { connectToDatabase } from "@/lib/db/connect";
 import { Restaurant } from "@/models/Restaurant";
@@ -26,6 +27,9 @@ export default async function SuperAdminTenantDetailPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
+  // Guard against non-ObjectId segments (e.g. /super-admin/tenants/new) so
+  // Restaurant.findById() never throws a CastError.
+  if (!isValidObjectId(id)) redirect("/super-admin/tenants");
   const impersonateErr = sp.impersonate ? IMPERSONATE_MSG[sp.impersonate] ?? null : null;
   await connectToDatabase();
   const tenant = await Restaurant.findById(id).lean();
@@ -42,6 +46,7 @@ export default async function SuperAdminTenantDetailPage({
     trialEndsAt: tx.trialEndsAt ? new Date(tx.trialEndsAt).toISOString() : null,
     billingEmail: tx.billingEmail ?? "",
     notesInternal: tx.notesInternal ?? "",
+    enabledModules: Array.isArray(tx.enabledModules) && tx.enabledModules.length ? tx.enabledModules : ["pos"],
     features: {
       websiteSync: tx.features?.websiteSync ?? true,
       aiFeatures: tx.features?.aiFeatures ?? false,

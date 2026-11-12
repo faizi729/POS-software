@@ -4,17 +4,37 @@ import { z } from "zod";
 import { connectToDatabase } from "@/lib/db/connect";
 import { getSuperAdminSession } from "@/lib/auth/get-super-admin-session";
 import { assertCanMutate } from "@/lib/auth/super-admin-permissions";
+import { hashPassword } from "@/lib/auth/password";
 import { Restaurant } from "@/models/Restaurant";
+import { User } from "@/models/User";
 import { AuditLog } from "@/models/AuditLog";
 import { getClientIp, rateLimit } from "@/lib/middleware/rate-limit";
 
-const createSchema = z.object({
-  name: z.string().min(2),
-  slug: z.string().min(2).regex(/^[a-z0-9-]+$/),
-  timezone: z.string().min(2).default("Asia/Kolkata"),
-  currency: z.string().length(3).default("INR"),
-  plan: z.enum(["none", "starter", "growth", "scale"]).default("none")
-});
+const createSchema = z
+  .object({
+    name: z.string().min(2),
+    slug: z.string().min(2).regex(/^[a-z0-9-]+$/),
+    timezone: z.string().min(2).default("Asia/Kolkata"),
+    currency: z.string().length(3).default("INR"),
+    plan: z.enum(["none", "starter", "growth", "scale"]).default("none"),
+    enabledModules: z.array(z.enum(["pos", "rooms", "banquet"])).min(1).default(["pos"]),
+    // Optional owner account, created together with the tenant.
+    ownerName: z.string().min(2).max(80).optional(),
+    ownerEmail: z.string().email().optional(),
+    ownerPassword: z.string().min(8).max(200).optional(),
+    twoFactorEnabled: z.boolean().optional()
+  })
+  .superRefine((val, ctx) => {
+    const hasEmail = Boolean(val.ownerEmail);
+    const hasPassword = Boolean(val.ownerPassword);
+    if (hasEmail !== hasPassword) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [hasEmail ? "ownerPassword" : "ownerEmail"],
+        message: "ownerEmail and ownerPassword must be provided together"
+      });
+    }
+  });
 
 export async function GET(req: NextRequest) {
   await getSuperAdminSession(); // RBAC gate
@@ -101,8 +121,53 @@ export async function POST(req: NextRequest) {
     timezone: parsed.data.timezone,
     currency: parsed.data.currency,
     status: "active",
-    plan: parsed.data.plan
+    plan: parsed.data.plan,
+    enabledModules: parsed.data.enabledModules
   });
+
+  let ownerId: string | null = null;
+  if (parsed.data.ownerEmail && parsed.data.ownerPassword) {
+    try {
+      const passwordHash = await hashPassword(parsed.data.ownerPassword);
+      const owner = await User.create({
+        restaurantId: tenant._id,
+        name: (parsed.data.ownerName || "Owner").trim(),
+        email: parsed.data.ownerEmail.trim().toLowerCase(),
+        passwordHash,
+        role: "owner",
+        status: "active",
+        twoFactorEnabled: Boolean(parsed.data.twoFactorEnabled)
+      });
+
+      await Restaurant.updateOne({ _id: tenant._id }, { $set: { ownerId: owner._id } }).catch(() => {});
+      ownerId = owner._id.toString();
+
+      await AuditLog.create({
+        actorType: "platform",
+        actorId: sa.platformUserId,
+        actorEmail: sa.email,
+        action: "tenant.owner.create",
+        targetType: "user",
+        targetId: ownerId,
+        tenantId: tenant._id,
+        meta: {
+          email: owner.email,
+          tenantSlug: tenant.slug,
+          twoFactorEnabled: Boolean(parsed.data.twoFactorEnabled)
+        }
+      }).catch(() => {});
+    } catch (err: any) {
+      return NextResponse.json(
+        {
+          error: `Tenant created (slug "${tenant.slug}") but the owner account failed: ${
+            err?.message || "unknown error"
+          }. Add the owner from the tenant page.`,
+          tenantId: tenant._id.toString()
+        },
+        { status: 500 }
+      );
+    }
+  }
 
   await AuditLog.create({
     actorType: "platform",
@@ -112,9 +177,9 @@ export async function POST(req: NextRequest) {
     targetType: "tenant",
     targetId: tenant._id.toString(),
     tenantId: tenant._id,
-    meta: { slug: tenant.slug, plan: tenant.plan }
+    meta: { slug: tenant.slug, plan: tenant.plan, modules: tenant.enabledModules }
   }).catch(() => {});
 
-  return NextResponse.json({ ok: true, tenantId: tenant._id.toString() }, { status: 201 });
+  return NextResponse.json({ ok: true, tenantId: tenant._id.toString(), ownerId }, { status: 201 });
 }
 

@@ -1,0 +1,211 @@
+
+> restaurant-pos-saas@0.1.0 dev
+> set NEXT_DISABLE_TURBOPACK=1&& next dev
+
+   ▲ Next.js 15.5.14
+   - Local:        http://localhost:3000
+   - Network:      http://169.254.83.107:3000
+   - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 4.1s
+ ○ Compiling /api/auth/login ...
+ ✓ Compiled /api/auth/login in 2.4s (501 modules)
+ POST /api/auth/login 200 in 11754ms
+ ○ Compiling /api/hotel/reservations ...
+ ✓ Compiled /api/hotel/reservations in 1301ms (520 modules)
+ GET /api/hotel/reservations 200 in 2373ms
+ ✓ Compiled /api/hotel/payments in 501ms (522 modules)
+ POST /api/hotel/payments 201 in 1798ms
+ ✓ Compiled /api/hotel/reservations/[id] in 329ms (524 modules)
+ PATCH /api/hotel/reservations/6af5cc29b5f6756a63fd6911 200 in 4843ms
+ ✓ Compiled /api/hotel/folios/[reservationId] in 286ms (526 modules)
+ GET /api/hotel/folios/6af5cc29b5f6756a63fd6911 200 in 2667ms
+ ○ Compiling /rooms ...
+ ✓ Compiled /rooms in 8.2s (1738 modules)
+ GET /rooms 200 in 10281ms
+ ○ Compiling /banquet ...
+ ✓ Compiled /banquet in 2.9s (1690 modules)
+ GET /banquet 200 in 4751ms
+ ○ Compiling /hotel ...
+ ✓ Compiled /hotel in 947ms (1696 modules)
+ GET /hotel 200 in 2281ms
+ ✓ Compiled in 1842ms (711 modules)
+ ✓ Compiled in 862ms (711 modules)
+ ✓ Compiled in 588ms (711 modules)
+ ✓ Compiled in 476ms (711 modules)
+ ✓ Compiled in 651ms (711 modules)
+ ✓ Compiled in 504ms (711 modules)
+ ✓ Compiled in 546ms (711 modules)
+ ✓ Compiled in 191ms (711 modules)
+ ✓ Compiled in 196ms (711 modules)
+ ✓ Compiled in 433ms (711 modules)
+ ✓ Compiled in 454ms (711 modules)
+ ✓ Compiled in 816ms (711 modules)
+ ✓ Compiled in 1632ms (711 modules)
+ ✓ Compiled in 1057ms (711 modules)
+ ✓ Compiled in 976ms (711 modules)
+ ✓ Compiled in 969ms (697 modules)
+ ✓ Compiled in 202ms (711 modules)
+ ✓ Compiled in 182ms (711 modules)
+ ✓ Compiled in 158ms (711 modules)
+ ✓ Compiled in 148ms (711 modules)
+ ✓ Compiled in 209ms (711 modules)
+ ✓ Compiled in 191ms (711 modules)
+ ✓ Compiled in 186ms (711 modules)
+ ✓ Compiled in 221ms (697 modules)
+ ✓ Compiled in 162ms (711 modules)
+ ✓ Compiled in 182ms (711 modules)
+ ✓ Compiled in 178ms (711 modules)
+ ✓ Compiled in 70ms (697 modules)
+ ✓ Compiled in 225ms (711 modules)
+ ✓ Compiled in 150ms (711 modules)
+ ✓ Compiled in 372ms (697 modules)
+ ✓ Compiled in 1100ms (711 modules)
+ ✓ Compiled in 167ms (711 modules)
+ ✓ Compiled in 153ms (711 modules)
+ ✓ Compiled in 140ms (711 modules)
+ ✓ Compiled in 176ms (711 modules)
+ ✓ Compiled in 235ms (697 modules)
+ ✓ Compiled in 183ms (711 modules)
+ ✓ Compiled in 142ms (711 modules)
+ ✓ Compiled in 175ms (711 modules)
+ ✓ Compiled in 145ms (711 modules)
+ ✓ Compiled in 164ms (711 modules)
+ ✓ Compiled in 154ms (711 modules)
+ ✓ Compiled in 179ms (711 modules)
+ ✓ Compiled in 69ms (697 modules)
+ ✓ Compiled in 174ms (711 modules)
+ ✓ Compiled in 232ms (711 modules)
+ ✓ Compiled in 173ms (711 modules)
+ ✓ Compiled in 155ms (711 modules)
+ ✓ Compiled in 139ms (711 modules)
+ ✓ Compiled in 155ms (711 modules)
+ ✓ Compiled in 66ms (697 modules)
+ ✓ Compiled in 198ms (711 modules)
+ ✓ Compiled in 171ms (711 modules)
+ ✓ Compiled in 162ms (711 modules)
+ ✓ Compiled in 69ms (697 modules)
+ ✓ Compiled in 159ms (711 modules)
+ ✓ Compiled in 129ms (711 modules)
+ ✓ Compiled in 337ms (697 modules)
+ ✓ Compiled in 167ms (711 modules)
+ ✓ Compiled in 69ms (697 modules)
+ ✓ Compiled in 167ms (711 modules)
+ ✓ Compiled in 146ms (711 modules)
+ ✓ Compiled in 233ms (711 modules)
+ ✓ Compiled in 187ms (711 modules)
+ ✓ Compiled in 242ms (711 modules)
+ ✓ Compiled in 159ms (711 modules)
+ ✓ Compiled in 187ms (711 modules)
+ ✓ Compiled in 219ms (711 modules)
+ ✓ Compiled in 235ms (711 modules)
+ ✓ Compiled in 254ms (711 modules)
+ ✓ Compiled in 162ms (711 modules)
+ ✓ Compiled in 171ms (711 modules)
+ ✓ Compiled in 210ms (711 modules)
+ ✓ Compiled in 175ms (711 modules)
+ ✓ Compiled in 70ms (697 modules)
+ ✓ Compiled in 155ms (711 modules)
+ ✓ Compiled in 267ms (697 modules)
+ ✓ Compiled in 226ms (711 modules)
+ ✓ Compiled in 178ms (711 modules)
+ ✓ Compiled in 145ms (711 modules)
+ ✓ Compiled in 145ms (711 modules)
+ ✓ Compiled in 170ms (711 modules)
+ ✓ Compiled in 68ms (697 modules)
+ ✓ Compiled in 149ms (711 modules)
+ ✓ Compiled in 224ms (711 modules)
+ ✓ Compiled in 200ms (711 modules)
+ ✓ Compiled in 69ms (697 modules)
+ ✓ Compiled in 177ms (711 modules)
+ ✓ Compiled in 218ms (711 modules)
+ ✓ Compiled in 248ms (711 modules)
+ ✓ Compiled in 262ms (711 modules)
+ ✓ Compiled in 199ms (711 modules)
+ ✓ Compiled in 270ms (713 modules)
+ ✓ Compiled in 217ms (713 modules)
+ ✓ Compiled in 556ms (713 modules)
+ ○ Compiling /rates ...
+ ✓ Compiled /rates in 4.1s (1690 modules)
+ GET /rates 200 in 5901ms
+ ○ Compiling /reports ...
+ ✓ Compiled /reports in 1311ms (1703 modules)
+ GET /reports 200 in 2788ms
+ ○ Compiling /book/[slug] ...
+ ✓ Compiled /book/[slug] in 817ms (1719 modules)
+ GET /book/hotel-demo 200 in 2563ms
+ ○ Compiling /api/auth/login ...
+ ✓ Compiled /api/auth/login in 1419ms (1105 modules)
+ POST /api/auth/login 200 in 2897ms
+ ○ Compiling /api/hotel/rate-plans ...
+ ✓ Compiled /api/hotel/rate-plans in 560ms (1815 modules)
+ GET /api/hotel/rate-plans 200 in 1278ms
+ ○ Compiling /api/public/[slug]/availability ...
+ ✓ Compiled /api/public/[slug]/availability in 513ms (1817 modules)
+ GET /api/public/hotel-demo/availability?checkIn=2026-12-05&checkOut=2026-12-07&adults=2 200 in 2825ms
+ ✓ Compiled in 693ms (719 modules)
+ ✓ Compiled in 670ms (719 modules)
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 800ms (1822 modules)
+ GET /api/public/hotel-demo/availability?checkIn=2026-12-05&checkOut=2026-12-07&adults=2 404 in 1310ms
+ ○ Compiling /api/hotel/banquet-bookings ...
+ ✓ Compiled /api/hotel/banquet-bookings in 1176ms (1826 modules)
+ GET /api/hotel/banquet-bookings?from=2026-11-01&to=2026-12-31 200 in 2115ms
+ GET /api/public/hotel-demo/availability?checkIn=2026-12-05&checkOut=2026-12-07 200 in 951ms
+ ✓ Compiled in 1104ms (723 modules)
+ ○ Compiling /api/hotel/quote ...
+ ✓ Compiled /api/hotel/quote in 774ms (1823 modules)
+ POST /api/hotel/quote 200 in 1876ms
+ GET /api/public/hotel-demo/availability?checkIn=2026-12-05&checkOut=2026-12-07 200 in 1317ms
+ POST /api/hotel/quote 200 in 678ms
+ ○ Compiling /api/hotel/reports ...
+ ✓ Compiled /api/hotel/reports in 669ms (1638 modules)
+ GET /api/hotel/reports?from=2026-11-01&to=2026-12-31 200 in 2180ms
+ GET /api/hotel/reports?from=2026-11-01&to=2026-11-30&format=csv 200 in 1954ms
+ ○ Compiling /api/hotel/night-audit ...
+ ✓ Compiled /api/hotel/night-audit in 607ms (1640 modules)
+ GET /api/hotel/night-audit?date=2026-11-11 200 in 1287ms
+ POST /api/hotel/night-audit 400 in 1928ms
+ POST /api/hotel/night-audit 400 in 1821ms
+ ○ Compiling /api/hotel/banquet-bookings/[id] ...
+ ✓ Compiled /api/hotel/banquet-bookings/[id] in 521ms (1643 modules)
+ GET /api/hotel/banquet-bookings/6AF5?doc=quotation 400 in 2153ms
+ ✓ Compiled in 1603ms (998 modules)
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 1291ms (1641 modules)
+ POST /api/hotel/night-audit 404 in 1886ms
+ POST /api/hotel/night-audit 201 in 2544ms
+ ✓ Compiled /api/hotel/banquet-bookings in 228ms (934 modules)
+ GET /api/hotel/banquet-bookings?from=2026-11-01&to=2026-12-31 200 in 1143ms
+ ✓ Compiled /api/hotel/banquet-bookings/[id]/document in 502ms (1646 modules)
+ GET /api/hotel/banquet-bookings/6af5d0231f74bbf494a5a675/document?doc=invoice 200 in 3657ms
+ ✓ Compiled in 479ms (723 modules)
+ ○ Compiling /api/hotel/reservations ...
+ ✓ Compiled /api/hotel/reservations in 556ms (1649 modules)
+ GET /api/hotel/reservations 200 in 1911ms
+ ○ Compiling /api/hotel/rooms ...
+ ✓ Compiled /api/hotel/rooms in 574ms (1651 modules)
+ GET /api/hotel/rooms 200 in 1479ms
+ ○ Compiling /api/hotel/reservations/[id] ...
+ ✓ Compiled /api/hotel/reservations/[id] in 515ms (1653 modules)
+ PATCH /api/hotel/reservations/6af5d0221f74bbf494a5a662 200 in 3455ms
+ ○ Compiling /api/hotel/maintenance ...
+ ✓ Compiled /api/hotel/maintenance in 591ms (1651 modules)
+ POST /api/hotel/maintenance 201 in 1827ms
+ ✓ Compiled in 1369ms (723 modules)
+ ✓ Compiled in 1274ms (723 modules)
+ ○ Compiling /rates ...
+ ✓ Compiled /rates in 522ms (1045 modules)
+ GET /rates 200 in 1941ms
+ ○ Compiling /maintenance ...
+ ✓ Compiled /maintenance in 2.7s (1758 modules)
+ GET /maintenance 200 in 4968ms
+ ○ Compiling /reports ...
+ ✓ Compiled /reports in 530ms (1060 modules)
+ GET /reports 200 in 1634ms
+ ✓ Compiled /book/[slug] in 197ms (1067 modules)
+ GET /book/hotel-demo 200 in 640ms
+ ✓ Compiled /rooms in 236ms (1074 modules)
+ GET /rooms 200 in 1746ms
+ ✓ Compiled in 407ms (721 modules)

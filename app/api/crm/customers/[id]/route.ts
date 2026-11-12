@@ -22,13 +22,13 @@ export async function GET(_: NextRequest, context: RouteContext) {
 
     const whatsappLinks = {
       missYou: generateWhatsAppLink(
-        detail.phone,
+        detail.phone ?? "",
         WHATSAPP_TEMPLATES.missYou(detail.name, "our restaurant")
       ),
       loyaltyReward:
         detail.loyaltyPoints >= 100
           ? generateWhatsAppLink(
-              detail.phone,
+              detail.phone ?? "",
               WHATSAPP_TEMPLATES.loyaltyReward(detail.name, "our restaurant")
             )
           : null

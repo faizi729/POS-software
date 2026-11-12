@@ -5,7 +5,9 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  BedDouble,
   Brain,
+  Building2,
   ChefHat,
   ChevronRight,
   CreditCard,
@@ -15,11 +17,15 @@ import {
   MenuSquare,
   MessageCircle,
   Package,
+  PartyPopper,
   PieChart,
   ReceiptText,
   Settings,
+  Sparkles,
   Store,
+  Tag,
   Users,
+  Wrench,
   X
 } from "lucide-react";
 import { useState } from "react";
@@ -28,7 +34,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
 import { useUiStore } from "@/store/ui-store";
 
-type NavHref =
+export type NavHref =
   | "/dashboard"
   | "/orders"
   | "/kitchen"
@@ -39,9 +45,17 @@ type NavHref =
   | "/insights"
   | "/whatsapp"
   | "/reports"
-  | "/templates";
+  | "/templates"
+  | "/rooms"
+  | "/banquet"
+  | "/hotel"
+  | "/maintenance"
+  | "/rates"
+  | "/rooms/setup"
+  | "/housekeeping"
+  | "/banquet/halls";
 
-type NavigationItem = {
+export type NavigationItem = {
   href: NavHref;
   label: string;
   badge: string;
@@ -59,6 +73,14 @@ const icons: Record<NavHref, React.ComponentType<{ className?: string }>> = {
   "/whatsapp": MessageCircle,
   "/reports": PieChart,
   "/templates": LayoutTemplate,
+  "/rooms": BedDouble,
+  "/banquet": PartyPopper,
+  "/hotel": BedDouble,
+  "/maintenance": Wrench,
+  "/rates": Tag,
+  "/rooms/setup": Settings,
+  "/housekeeping": Sparkles,
+  "/banquet/halls": Building2,
 };
 
 function NavLinks({
@@ -114,6 +136,8 @@ function NavLinks({
 export function AppShellClient({
   children,
   navigation,
+  hotelNavigation,
+  banquetNavigation,
   restaurantName,
   restaurantSlug,
   userName,
@@ -121,6 +145,8 @@ export function AppShellClient({
 }: {
   children: React.ReactNode;
   navigation: readonly NavigationItem[];
+  hotelNavigation: readonly NavigationItem[];
+  banquetNavigation: readonly NavigationItem[];
   restaurantName: string;
   restaurantSlug: string;
   userName: string;
@@ -129,6 +155,12 @@ export function AppShellClient({
   const pathname = usePathname();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const startRouteLoading = useUiStore((s) => s.startRouteLoading);
+
+  const activeNavigation = pathname.startsWith("/banquet")
+    ? banquetNavigation
+    : pathname.startsWith("/hotel") || pathname.startsWith("/rooms") || pathname.startsWith("/housekeeping")
+      ? hotelNavigation
+      : navigation;
 
   return (
     <div className="min-h-screen">
@@ -158,7 +190,7 @@ export function AppShellClient({
 
               <div className="flex-1 space-y-6 overflow-y-auto">
                 <NavLinks
-                  navigation={navigation}
+                  navigation={activeNavigation}
                   pathname={pathname}
                   onNavigate={() => setIsDrawerOpen(false)}
                 />
@@ -207,7 +239,51 @@ export function AppShellClient({
           </div>
         ) : null}
 
-        <div className="grid gap-6">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)]">
+          <aside className="hidden lg:sticky lg:top-6 lg:block lg:self-start">
+            <div className="surface-card p-3">
+              <div className="mb-3 flex items-center gap-2 px-2">
+                <span className="grid size-9 place-items-center rounded-xl border border-border-subtle bg-white shadow-soft">
+                  <Image src="/logo.png" alt="Rasoio" width={20} height={20} className="select-none" />
+                </span>
+                <div className="leading-tight">
+                  <p className="text-sm font-semibold text-text-primary">{restaurantName}</p>
+                  <p className="text-xs text-text-muted">{restaurantSlug}</p>
+                </div>
+              </div>
+
+              <NavLinks navigation={activeNavigation} pathname={pathname} />
+
+              <div className="mt-3 space-y-1 border-t border-border-subtle pt-3">
+                <Link
+                  href="/settings"
+                  onClick={() => startRouteLoading()}
+                  className="flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium text-text-secondary transition hover:bg-bg-surface hover:text-text-primary"
+                >
+                  <span className="flex items-center gap-3">
+                    <Settings className="h-4 w-4" />
+                    Settings
+                  </span>
+                </Link>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium text-text-secondary transition hover:bg-bg-surface hover:text-text-primary"
+                  onClick={async () => {
+                    try {
+                      await fetch("/api/auth/logout", { method: "POST" });
+                    } catch {}
+                    window.location.href = "/login";
+                  }}
+                >
+                  <span className="flex items-center gap-3">
+                    <LogOut className="h-4 w-4" />
+                    Logout
+                  </span>
+                </button>
+              </div>
+            </div>
+          </aside>
+
           <main className="space-y-6">
             <header className="surface-card flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between md:p-5">
               <div className="flex items-start gap-3">

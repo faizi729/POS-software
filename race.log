@@ -1,0 +1,2 @@
+{"nightsForWinningBooking":2,"overlappingReservations":1}
+roomnights indexes: _id_, restaurantId_1, roomId_1, reservationId_1, restaurantId_1_roomId_1_date_1 (unique), restaurantId_1_date_1

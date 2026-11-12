@@ -8,7 +8,7 @@ const userSchema = new Schema(
     passwordHash: { type: String, required: true },
     role: {
       type: String,
-      enum: ["owner", "manager", "cashier", "staff"],
+      enum: ["owner", "manager", "cashier", "staff", "front_desk", "housekeeping"],
       required: true
     },
     status: { type: String, enum: ["active", "invited", "disabled"], default: "active" },

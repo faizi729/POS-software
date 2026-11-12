@@ -1,4 +1,5 @@
 import { openRouterChatJson, type OpenRouterModel } from "@/lib/ai/openrouter";
+import type { ChatJsonRunner } from "@/lib/ai/chat-json";
 import { cleanOcrTextForAi } from "@/lib/ocr/ocr-text-clean";
 import { splitOcrTextIntoSections } from "@/lib/ocr/section-splitter";
 import { parseMenuFromOcrText, type ImportedMenu } from "@/lib/ocr/menu-import-parser";
@@ -13,6 +14,7 @@ export type ExtractionLog = {
   itemsRuleBased: number;
   ai: {
     enabled: boolean;
+    provider: string | null;
     sections: number;
     failedSections: number;
     items: number;
@@ -27,6 +29,13 @@ export type ExtractionLog = {
 export type ExtractMenuParams = {
   rawOcrText: string;
   menuName: string;
+  /** Structured-output runner (Sarvam AI first, via lib/ai/chat-json). */
+  ai?: {
+    chatJson: ChatJsonRunner;
+    provider?: string | null;
+    model?: string | null;
+  };
+  /** @deprecated pass `ai` instead — kept so older callers keep working. */
   openRouter?: {
     apiKey: string;
     model: OpenRouterModel;
@@ -68,7 +77,8 @@ function normalizeImportedMenu(menu: ImportedMenu) {
 
 async function aiExtractSections(params: {
   sections: Array<{ category: string; text: string }>;
-  openRouter: { apiKey: string; model: OpenRouterModel };
+  runner: ChatJsonRunner;
+  model?: string | null;
 }) {
   type AiSectionResult = {
     category: string;
@@ -111,15 +121,14 @@ ${section.text}
 """`;
 
       try {
-        return await openRouterChatJson<AiSectionResult>({
-          apiKey: params.openRouter.apiKey,
-          model: params.openRouter.model,
+        return await params.runner<AiSectionResult>({
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: prompt }
           ],
-          maxTokens: 900,
+          maxTokens: 1200,
           temperature: 0.2,
+          model: params.model ?? undefined,
           retries: 1
         });
       } catch {
@@ -150,27 +159,52 @@ export async function extractMenuHybrid(params: ExtractMenuParams) {
   let ruleBased = parseMenuFromOcrText(cleaned, { defaultMenuName: params.menuName });
   ruleBased = normalizeImportedMenu(ruleBased);
 
+  // Resolve an AI runner: explicit `ai` (Sarvam via chatJson) wins, legacy `openRouter` next.
+  const runner: ChatJsonRunner | undefined =
+    params.ai?.chatJson ??
+    (params.openRouter
+      ? ((async <T,>(args: Parameters<ChatJsonRunner>[0]) =>
+          openRouterChatJson<T>({
+            apiKey: params.openRouter!.apiKey,
+            model: params.openRouter!.model,
+            messages: args.messages,
+            maxTokens: args.maxTokens,
+            temperature: args.temperature,
+            retries: args.retries
+          })) as ChatJsonRunner)
+      : undefined);
+
+  const aiProvider = params.ai?.provider ?? (runner ? "openrouter" : null);
+  const aiModel = params.ai?.model ?? params.openRouter?.model ?? null;
+
   const log: ExtractionLog = {
     layoutType: detected.type,
     lines: lines.length,
     numberedLines: detected.numbered,
     priceOnlyLines: detected.priceOnly,
     itemsRuleBased: countItems(ruleBased),
-    ai: { enabled: Boolean(params.openRouter), sections: 0, failedSections: 0, items: 0, model: params.openRouter?.model ?? null },
+    ai: {
+      enabled: Boolean(runner),
+      provider: aiProvider,
+      sections: 0,
+      failedSections: 0,
+      items: 0,
+      model: aiModel
+    },
     final: { categories: ruleBased.categories.length, items: countItems(ruleBased) }
   };
 
   // AI refinement: only if enabled and rule-based seems weak.
-  const shouldUseAi = Boolean(params.openRouter) && countItems(ruleBased) < 10;
+  const shouldUseAi = Boolean(runner) && countItems(ruleBased) < 10;
 
-  if (!shouldUseAi || !params.openRouter) {
+  if (!shouldUseAi || !runner) {
     return { menu: ruleBased, log };
   }
 
   const sections = splitOcrTextIntoSections(cleaned);
   log.ai.sections = sections.length;
 
-  const ai = await aiExtractSections({ sections, openRouter: params.openRouter });
+  const ai = await aiExtractSections({ sections, runner, model: aiModel });
   const aiMenu: ImportedMenu = {
     menuName: params.menuName,
     categories: ai.menu.categories as any

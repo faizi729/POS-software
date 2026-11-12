@@ -1,28 +1,15 @@
 import { NextRequest } from "next/server";
 import { ok } from "@/lib/api/response";
 import { extractMenuHybrid } from "@/lib/ocr/menu-extraction-engine";
+import { activeChatModel, activeChatProvider, chatJson } from "@/lib/ai/chat-json";
+import { isOcrConfigured, ocrDocumentFile, ocrMissingKeyMessage } from "@/lib/ocr/document-ocr";
 import { validateUploads } from "@/lib/middleware/upload-validate";
 import { fail } from "@/lib/api/response";
 import { getClientIp, rateLimit } from "@/lib/middleware/rate-limit";
 import { assertRole, requireSession } from "@/lib/auth/guards";
 
-async function callOcrSpace(params: { apiKey: string; file: File }) {
-  const form = new FormData();
-  form.append("apikey", params.apiKey);
-  form.append("language", "eng");
-  form.append("isOverlayRequired", "false");
-  form.append("scale", "true");
-  form.append("OCREngine", "2");
-  form.append("file", params.file, params.file.name);
-  const response = await fetch("https://api.ocr.space/parse/image", { method: "POST", body: form });
-  if (!response.ok) throw new Error(`OCR.Space request failed with ${response.status}`);
-  const payload = (await response.json()) as any;
-  const parsedText =
-    payload?.ParsedResults?.[0]?.ParsedText ??
-    payload?.ParsedResults?.map((r: any) => r?.ParsedText).join("\n") ??
-    "";
-  return String(parsedText || "");
-}
+/** Sarvam Vision jobs are async (create -> poll -> results); allow a long run. */
+export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
   const session = await requireSession();
@@ -37,10 +24,10 @@ export async function POST(request: NextRequest) {
   });
   if (!rl.ok) return fail("Too many requests. Try again soon.", 429);
 
-  const apiKey = process.env.OCR_SPACE_API_KEY;
-  if (!apiKey) {
-    return ok({ error: "OCR_SPACE_API_KEY missing" }, { status: 400 });
+  if (!isOcrConfigured()) {
+    return ok({ error: ocrMissingKeyMessage() }, { status: 400 });
   }
+
   const form = await request.formData();
   const files = Array.from(form.getAll("files") || []).filter((f): f is File => f instanceof File);
   if (!files.length) return ok({ error: "No files uploaded (field: files[])" }, { status: 400 });
@@ -48,21 +35,48 @@ export async function POST(request: NextRequest) {
   const valid = validateUploads({ files, maxFiles: 10, maxBytesPerFile: 5 * 1024 * 1024 });
   if (!valid.ok) return fail(valid.error, 400);
 
-  // OCR all files and merge text
-  const texts = await Promise.all(files.map((file) => callOcrSpace({ apiKey, file }).catch(() => "")));
+  // OCR every file (Sarvam Vision -> OCR.Space fallback) and merge the text.
+  const ocrResults = await Promise.all(
+    files.map((file) => ocrDocumentFile({ file }).catch((error: unknown) => ({ error })))
+  );
+
+  const texts: string[] = [];
+  const warnings: string[] = [];
+  const providers = new Set<string>();
+  let firstError: string | null = null;
+
+  for (const result of ocrResults) {
+    if ("error" in result) {
+      const message = result.error instanceof Error ? result.error.message : "OCR failed for one file.";
+      if (!firstError) firstError = message;
+      warnings.push(message);
+      continue;
+    }
+    providers.add(result.provider);
+    warnings.push(...result.warnings);
+    if (result.text.trim()) texts.push(result.text);
+  }
+
   const combinedText = texts.filter(Boolean).join("\n\n");
+  if (!combinedText.trim()) {
+    return ok({ error: firstError || "No text could be read from the uploaded files." }, { status: 400 });
+  }
+
+  const provider = activeChatProvider();
+  const model = activeChatModel("menu");
 
   const result = await extractMenuHybrid({
     rawOcrText: combinedText,
     menuName: "Imported Menu",
-    openRouter: process.env.OPENROUTER_API_KEY
-      ? {
-          apiKey: process.env.OPENROUTER_API_KEY as string,
-          model: (process.env.OPENROUTER_MODEL as any) || "openai/gpt-4o-mini"
-        }
-      : undefined
+    ai: provider === "none" ? undefined : { chatJson, provider, model }
   });
 
-  return ok({ text: combinedText.slice(0, 20000), extracted: result.menu, log: result.log });
+  return ok({
+    text: combinedText.slice(0, 20000),
+    extracted: result.menu,
+    log: result.log,
+    ocr: { providers: Array.from(providers), warnings },
+    ai: { provider, model }
+  });
 }
 

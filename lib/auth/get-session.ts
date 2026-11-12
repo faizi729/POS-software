@@ -1,7 +1,7 @@
 export type AppSession = {
   userId: string;
   restaurantId: string;
-  role: "owner" | "manager" | "cashier" | "staff";
+  role: "owner" | "manager" | "cashier" | "staff" | "front_desk" | "housekeeping";
   name: string;
 };
 

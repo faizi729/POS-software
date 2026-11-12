@@ -2,37 +2,16 @@ import { NextRequest } from "next/server";
 
 import { ok } from "@/lib/api/response";
 import { cloneReceiptFromOcr } from "@/lib/ocr/receipt-clone-engine";
+import { extractReceiptTemplateWithAi } from "@/lib/ocr/receipt-ai-template";
+import { activeChatModel } from "@/lib/ai/chat-json";
+import { isOcrConfigured, ocrDocumentFile, ocrMissingKeyMessage } from "@/lib/ocr/document-ocr";
 import { validateUploads } from "@/lib/middleware/upload-validate";
 import { fail } from "@/lib/api/response";
 import { getClientIp, rateLimit } from "@/lib/middleware/rate-limit";
 import { assertRole, requireSession } from "@/lib/auth/guards";
 
-async function callOcrSpace(params: { apiKey: string; file: File }) {
-  const form = new FormData();
-  form.append("apikey", params.apiKey);
-  form.append("language", "eng");
-  form.append("isOverlayRequired", "false");
-  form.append("scale", "true");
-  form.append("OCREngine", "2");
-  form.append("file", params.file, params.file.name);
-
-  const response = await fetch("https://api.ocr.space/parse/image", {
-    method: "POST",
-    body: form
-  });
-
-  if (!response.ok) {
-    throw new Error(`OCR.Space request failed with ${response.status}`);
-  }
-
-  const payload = (await response.json()) as any;
-  const parsedText =
-    payload?.ParsedResults?.[0]?.ParsedText ??
-    payload?.ParsedResults?.map((r: any) => r?.ParsedText).join("\n") ??
-    "";
-
-  return { raw: payload, text: String(parsedText || "") };
-}
+/** Sarvam Vision jobs are async (create -> poll -> results); allow a long run. */
+export const maxDuration = 120;
 
 function renderReceiptLayoutToHtml(params: {
   restaurantName: string;
@@ -142,15 +121,8 @@ export async function POST(request: NextRequest) {
     });
     if (!rl.ok) return fail("Too many requests. Try again soon.", 429);
 
-    const apiKey = process.env.OCR_SPACE_API_KEY;
-    if (!apiKey) {
-      return ok(
-        {
-          error:
-            "OCR_SPACE_API_KEY is missing. Add it to your .env file, restart the dev server, then try again."
-        },
-        { status: 400 }
-      );
+    if (!isOcrConfigured()) {
+      return ok({ error: ocrMissingKeyMessage() }, { status: 400 });
     }
 
     const form = await request.formData();
@@ -162,9 +134,16 @@ export async function POST(request: NextRequest) {
     const valid = validateUploads({ files: [file], maxFiles: 1, maxBytesPerFile: 5 * 1024 * 1024 });
     if (!valid.ok) return fail(valid.error, 400);
 
-    const ocr = await callOcrSpace({ apiKey, file });
+    // OCR: Sarvam Vision (preferred) -> OCR.Space fallback.
+    const ocr = await ocrDocumentFile({ file });
 
-    const result = cloneReceiptFromOcr({ rawText: ocr.text, currency: "INR" });
+    // Template: Sarvam AI extraction first, deterministic rule engine as fallback.
+    const ruleResult = cloneReceiptFromOcr({ rawText: ocr.text, currency: "INR" });
+    const aiTemplate = await extractReceiptTemplateWithAi({ rawText: ocr.text, currency: "INR" }).catch(
+      () => null
+    );
+    const result = aiTemplate?.result ?? ruleResult;
+
     const demoHtml = renderReceiptLayoutToHtml({
       restaurantName: result.structured.restaurant_name || "Restaurant",
       layout: result.layout
@@ -172,10 +151,13 @@ export async function POST(request: NextRequest) {
 
     return ok({
       ocrText: ocr.text,
+      ocrMarkdown: ocr.markdown ?? "",
+      ocrProvider: ocr.provider,
       structured: result.structured,
       layout: result.layout,
       demoHtml,
-      warnings: result.debug.warnings
+      ai: { used: Boolean(aiTemplate), provider: aiTemplate?.provider ?? null, model: activeChatModel("bill") },
+      warnings: [...ocr.warnings, ...result.debug.warnings]
     });
   } catch (error) {
     console.error(error);

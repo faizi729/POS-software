@@ -20,4 +20,12 @@ export * from "./AuditLog";
 export * from "./PlatformSetting";
 export * from "./WaSession";
 export * from "./ReceiptTemplate";
+export * from "./Room";
+export * from "./Reservation";
+export * from "./Folio";
+export * from "./HousekeepingTask";
+export * from "./Banquet";
+export * from "./HotelLedger";
+export * from "./HotelOps";
+
 export * from "./Table";

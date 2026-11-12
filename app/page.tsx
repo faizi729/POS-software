@@ -43,6 +43,7 @@ export const viewport: Viewport = {
 
 const PRIMARY_CTA_HREF = "/demo" as const;
 const LOGIN_HREF = "/login" as const;
+const PRIVACY_HREF = "/privacy" as const;
 const SECONDARY_CTA_HREF = "#proof";
 const PRIMARY_CTA_TEXT = "See your menu sync";
 /** Shorter label for narrow viewports so CTAs stay usable */
@@ -143,6 +144,12 @@ function TopNav() {
             <NavLink href="#how">How it works</NavLink>
             <NavLink href="#pricing">Pricing</NavLink>
             <NavLink href="#faq">FAQ</NavLink>
+            <Link
+              href={PRIVACY_HREF}
+              className="rounded-xl px-3 py-2 text-sm font-semibold text-text-secondary transition hover:bg-bg-surface hover:text-text-primary"
+            >
+              Privacy
+            </Link>
           </nav>
 
           <div className="flex min-w-0 shrink-0 items-center gap-1 sm:gap-2">
@@ -161,6 +168,12 @@ function TopNav() {
                   <MobileNavRow href="#pricing">Pricing</MobileNavRow>
                   <MobileNavRow href="#faq">FAQ</MobileNavRow>
                   <MobileNavRow href="#proof">Live proof</MobileNavRow>
+                  <Link
+                    href={PRIVACY_HREF}
+                    className="rounded-xl px-3 py-2.5 text-sm font-semibold text-text-primary transition hover:bg-bg-surface"
+                  >
+                    Privacy policy
+                  </Link>
                 </div>
               </div>
             </details>
@@ -1585,12 +1598,18 @@ function Footer() {
           <Link className="rounded-xl px-3 py-2 transition hover:bg-bg-surface" href={PRIMARY_CTA_HREF}>
             Book demo
           </Link>
+          <Link className="rounded-xl px-3 py-2 transition hover:bg-bg-surface" href={PRIVACY_HREF}>
+            Privacy policy
+          </Link>
         </div>
       </div>
 
       <div className="mt-4 text-xs text-text-muted">
         <p>
-          © {new Date().getFullYear()} Restaurant OS. All rights reserved.
+          © {new Date().getFullYear()} Restaurant OS. All rights reserved.{" "}
+          <Link href={PRIVACY_HREF} className="font-semibold text-text-secondary underline-offset-2 hover:underline">
+            Privacy
+          </Link>
         </p>
       </div>
     </footer>

@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Clock, Download, Loader2, Search, ShoppingCart } from "lucide-react";
+import { Check, Clock, Download, Loader2, Search, ShoppingCart } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import { Badge } from "@/components/ui/badge";
@@ -616,6 +615,7 @@ export function OrderScreenLive({
   const [tablePickerOpen, setTablePickerOpen] = useState(false);
   const [orderType, setOrderType] = useState<"dine_in" | "takeaway">("dine_in");
   const [paymentMethod, setPaymentMethod] = useState("card");
+  const [roomChargeNumber, setRoomChargeNumber] = useState("");
   const [checkoutPaymentStatus, setCheckoutPaymentStatus] = useState<"paid" | "unpaid">("paid");
   const [checkoutProcessing, setCheckoutProcessing] = useState(false);
   const [printBillLoading, setPrintBillLoading] = useState(false);
@@ -1101,19 +1101,36 @@ export function OrderScreenLive({
       }
 
       if (checkoutPaymentStatus === "paid") {
-        const payRes = await fetch(`/api/orders/${orderPayload.data.id}/payments`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            amount: total,
-            method: paymentMethod,
-            status: "completed",
-            reference: `POS-${Date.now()}`,
-            orderId: orderPayload.data.id
-          })
-        });
-        if (!payRes.ok) {
-          throw new Error("Payment failed");
+        if (paymentMethod === "room") {
+          const chargeRes = await fetch("/api/hotel/charge-to-room", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              roomNumber: roomChargeNumber.trim(),
+              amount: total,
+              description: `POS ${orderPayload.data.id.slice(-6)}`,
+              orderId: orderPayload.data.id
+            })
+          });
+          if (!chargeRes.ok) {
+            const payload = await chargeRes.json().catch(() => ({} as any));
+            throw new Error(payload?.error || "Could not charge to room");
+          }
+        } else {
+          const payRes = await fetch(`/api/orders/${orderPayload.data.id}/payments`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              amount: total,
+              method: paymentMethod,
+              status: "completed",
+              reference: `POS-${Date.now()}`,
+              orderId: orderPayload.data.id
+            })
+          });
+          if (!payRes.ok) {
+            throw new Error("Payment failed");
+          }
         }
       }
 
@@ -1319,20 +1336,12 @@ export function OrderScreenLive({
     <>
     <div className="space-y-6">
       <TableStatusBar />
-      <div className="grid gap-6 xl:items-start xl:grid-cols-[0.85fr_1.6fr_0.95fr]">
+      <div className="grid gap-6 xl:items-start xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.55fr)_minmax(0,1fr)]">
         {/* LEFT: Orders list */}
         <section className="xl:sticky xl:top-6 xl:self-start">
           <Card className="border border-border-subtle bg-bg-elevated">
             <CardHeader className="border-b border-border-subtle bg-white">
-              <div className="flex items-center justify-between gap-3">
-            <div>
-                  <p className="label-text">Orders list</p>
-                  <CardTitle className="mt-2">Active orders</CardTitle>
-                </div>
-                <Link href="/orders" className="text-sm font-semibold text-accent-primary hover:underline">
-                  View all
-                </Link>
-              </div>
+              <CardTitle>Orders</CardTitle>
             </CardHeader>
             <CardContent className="p-4">
               {/* Search + filter */}
@@ -1444,47 +1453,27 @@ export function OrderScreenLive({
 
         {/* CENTER: Menu list */}
         <section className="space-y-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="label-text">Menu list</p>
-              <h2 className="mt-2 text-[1.9rem] leading-9 tracking-[-0.04em] text-text-primary">Build an order</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold tracking-[-0.02em] text-text-primary">Menu</h2>
+            <div className="flex items-center gap-2 rounded-full border border-border-subtle bg-bg-elevated px-3 py-1.5 text-sm font-semibold text-text-primary">
+              <ShoppingCart className="h-3.5 w-3.5 text-text-secondary" />
+              <span className="tabular-nums">{items.reduce((sum, item) => sum + item.quantity, 0)}</span>
             </div>
-            <div className="hidden items-center gap-2 rounded-2xl border border-border-subtle bg-bg-elevated p-2 md:flex">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-bg-surface text-text-primary">
-                <ShoppingCart className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="label-text">Cart</p>
-                <p className="font-semibold text-text-primary">
-                  {items.reduce((sum, item) => sum + item.quantity, 0)} items
-                </p>
-              </div>
-            </div>
-            </div>
+          </div>
 
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-                <Input
-                  className="h-12 rounded-2xl bg-white pl-11"
-                  placeholder="Search menu... (press /)"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  ref={searchRef}
-                />
-              </div>
-            <div className="flex items-center gap-2 rounded-2xl border border-border-subtle bg-bg-elevated p-2 md:hidden">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-bg-surface text-text-primary">
-                  <ShoppingCart className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="label-text">Cart</p>
-                  <p className="font-semibold text-text-primary">
-                    {items.reduce((sum, item) => sum + item.quantity, 0)} items
-                  </p>
-                </div>
-              </div>
-            </div>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+            <Input
+              className="h-12 rounded-2xl bg-white pl-11 pr-12"
+              placeholder="Search menu"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              ref={searchRef}
+            />
+            <kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-border-subtle bg-bg-surface px-1.5 py-0.5 text-[11px] font-medium text-text-muted">
+              /
+            </kbd>
+          </div>
 
           <Card className="border border-border-subtle bg-bg-elevated">
             <CardContent className="space-y-4 p-4">
@@ -1527,50 +1516,47 @@ export function OrderScreenLive({
             </div>
 
               {isAllCategory ? (
-                <div className="flex flex-col gap-3 rounded-2xl border border-border-subtle bg-bg-surface p-3 md:flex-row md:items-center md:justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-text-secondary">View</span>
-                    <select
-                      className="h-9 rounded-xl border border-border-subtle bg-white px-3 text-xs font-semibold text-text-primary outline-none"
-                      value={itemsPageSize}
-                      onChange={(e) => setItemsPageSize(Number(e.target.value) as 10 | 20 | 50)}
-                    >
-                      <option value={10}>10</option>
-                      <option value={20}>20</option>
-                      <option value={50}>50</option>
-                    </select>
-                    <span className="text-xs text-text-secondary">per page</span>
-          </div>
+                <div className="flex items-center justify-between gap-3">
+                  <select
+                    aria-label="Items per page"
+                    className="h-9 cursor-pointer rounded-xl border border-border-subtle bg-white px-2.5 text-xs font-semibold text-text-primary outline-none"
+                    value={itemsPageSize}
+                    onChange={(e) => setItemsPageSize(Number(e.target.value) as 10 | 20 | 50)}
+                  >
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                  </select>
 
-                  <div className="flex items-center justify-between gap-3 md:justify-end">
-                    <div className="text-xs text-text-secondary">
-                      Page {itemsPageSafe} / {itemsTotalPages} · {itemsTotal} items
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        className="cursor-pointer rounded-xl border border-border-subtle bg-white px-3 py-2 text-xs font-semibold text-text-primary transition hover:bg-bg-surface disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={itemsPageSafe <= 1}
-                        onClick={() => setItemsPage((value) => Math.max(1, value - 1))}
-                      >
-                        Prev
-                      </button>
-                      <button
-                        type="button"
-                        className="cursor-pointer rounded-xl border border-border-subtle bg-white px-3 py-2 text-xs font-semibold text-text-primary transition hover:bg-bg-surface disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={itemsPageSafe >= itemsTotalPages}
-                        onClick={() => setItemsPage((value) => Math.min(itemsTotalPages, value + 1))}
-                      >
-                        Next
-                      </button>
-                    </div>
+                  <div className="flex items-center gap-1 text-xs font-semibold text-text-secondary tabular-nums">
+                    <button
+                      type="button"
+                      aria-label="Previous page"
+                      className="cursor-pointer rounded-lg px-2 py-1 transition hover:bg-white hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={itemsPageSafe <= 1}
+                      onClick={() => setItemsPage((value) => Math.max(1, value - 1))}
+                    >
+                      ‹
+                    </button>
+                    <span title={`${itemsTotal} items`}>
+                      {itemsPageSafe} / {itemsTotalPages}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label="Next page"
+                      className="cursor-pointer rounded-lg px-2 py-1 transition hover:bg-white hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={itemsPageSafe >= itemsTotalPages}
+                      onClick={() => setItemsPage((value) => Math.min(itemsTotalPages, value + 1))}
+                    >
+                      ›
+                    </button>
                   </div>
                 </div>
               ) : null}
             </CardContent>
           </Card>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-2">
             {visibleItems.map((item) => (
               <button
                 key={item.id}
@@ -1585,10 +1571,10 @@ export function OrderScreenLive({
                   toast.success("Added to cart", { message: item.name, durationMs: 2200 });
                 }}
                 className={[
-                  "group relative cursor-pointer overflow-hidden rounded-[24px] border p-5 text-left shadow-soft transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out will-change-transform active:scale-[0.99]",
+                  "group relative cursor-pointer overflow-hidden rounded-2xl border p-4 text-left transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out will-change-transform active:scale-[0.99]",
                   itemsInCart.has(item.id)
-                    ? "border-accent-primary bg-accent-primary/10 hover:bg-accent-primary/20"
-                    : "border-border-subtle bg-bg-elevated hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_42px_rgba(28,26,23,0.10)]"
+                    ? "border-accent-primary bg-accent-primary/10 hover:bg-accent-primary/15"
+                    : "border-border-subtle bg-bg-elevated hover:border-border-strong hover:bg-white"
                 ].join(" ")}
               >
                 <AnimatePresence>
@@ -1607,45 +1593,35 @@ export function OrderScreenLive({
                   ) : null}
                 </AnimatePresence>
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <Badge variant="neutral">{item.tags[0] ?? "Menu item"}</Badge>
-                    <h3 className="mt-3 text-[1.35rem] leading-8 tracking-[-0.03em] text-text-primary">{item.name}</h3>
+                  <div className="min-w-0">
+                    {item.tags[0] ? (
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                        {item.tags[0]}
+                      </p>
+                    ) : null}
+                    <h3 className="mt-1 truncate text-base font-semibold text-text-primary">{item.name}</h3>
                     {item.variants?.length ? (
-                      <p className="mt-1 text-sm font-medium text-text-secondary">
-                        {item.variants.length} variant{item.variants.length > 1 ? "s" : ""} available
+                      <p className="mt-1 text-xs text-text-muted">
+                        {item.variants.length} option{item.variants.length > 1 ? "s" : ""}
                       </p>
                     ) : null}
                   </div>
                   <div
                     className={[
-                      "rounded-full border px-3 py-1 text-sm font-semibold shadow-sm",
+                      "shrink-0 rounded-full px-2.5 py-1 text-sm font-semibold tabular-nums",
                       itemsInCart.has(item.id)
-                        ? "border-accent-primary bg-accent-primary/10 text-accent-primary"
-                        : "border-border-subtle bg-white text-text-primary"
+                        ? "bg-accent-primary/10 text-accent-primary"
+                        : "bg-bg-surface text-text-primary"
                     ].join(" ")}
                   >
                     {formatCurrency(item.price)}
                   </div>
                 </div>
-                <div
-                  className={[
-                    "mt-7 flex items-center justify-between rounded-2xl border px-4 py-3",
-                    itemsInCart.has(item.id) ? "bg-accent-primary/10" : "bg-bg-surface"
-                  ].join(" ")}
-                >
-                  <p
-                    className={
-                      itemsInCart.has(item.id)
-                        ? "text-accent-primary font-semibold"
-                        : "font-medium text-text-secondary"
-                    }
-                  >
-                    {itemsInCart.has(item.id) ? "In cart" : "Tap once to add"}
+                {itemsInCart.has(item.id) ? (
+                  <p className="mt-3 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-accent-primary">
+                    <Check className="h-3 w-3" /> In cart
                   </p>
-                  <span className="text-sm font-semibold text-accent-primary">
-                    {itemsInCart.has(item.id) ? "Add more" : "Add item"}
-                  </span>
-                </div>
+                ) : null}
               </button>
             ))}
           </div>
@@ -1685,13 +1661,12 @@ export function OrderScreenLive({
               </div>
             )}
             <CardHeader className="border-b border-border-subtle bg-white">
-              <p className="label-text">Order details</p>
-              <CardTitle className="mt-2 text-[1.7rem] leading-9 tracking-[-0.04em] text-text-primary">
-                Walk-in | {orderType === "dine_in" ? (tableNo ? `Table ${tableNo}` : "Select Table") : "Takeaway"}
+              <CardTitle className="text-xl">
+                {orderType === "takeaway" ? "Takeaway" : tableNo ? `Table ${tableNo}` : "New order"}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 p-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className={orderType === "dine_in" ? "grid grid-cols-2 gap-3" : "grid grid-cols-1 gap-3"}>
                 <select
                   className="h-11 rounded-2xl border border-border-subtle bg-white px-4 text-sm text-text-primary outline-none"
                   value={orderType}
@@ -1713,16 +1688,12 @@ export function OrderScreenLive({
                     onClick={() => setTablePickerOpen(true)}
                     className="h-11 rounded-2xl border border-border-subtle bg-white px-4 text-left text-sm text-text-primary outline-none transition hover:border-border-strong"
                   >
-                    {tableNo ? `Table ${tableNo} · Dine In` : "Select Table"}
+                    {tableNo ? `Table ${tableNo}` : "Select table"}
                   </button>
-                ) : (
-                  <div className="flex h-10 items-center rounded-xl border border-border-subtle bg-bg-surface px-4 text-sm text-text-secondary">
-                    No table needed
-                  </div>
-                )}
+                ) : null}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className={checkoutPaymentStatus === "paid" ? "grid grid-cols-2 gap-3" : "grid grid-cols-1 gap-3"}>
                 <select
                   className="h-11 rounded-2xl border border-border-subtle bg-white px-4 text-sm text-text-primary outline-none"
                   value={checkoutPaymentStatus}
@@ -1743,21 +1714,23 @@ export function OrderScreenLive({
                     <option value="card">Card</option>
                     <option value="upi">UPI</option>
                     <option value="wallet">Wallet</option>
+                    <option value="room">Room</option>
                   </select>
-                ) : (
-                  <div className="flex h-10 items-center rounded-xl border border-border-subtle bg-bg-surface px-4 text-sm text-text-secondary">
-                    Payment will be collected later
-                  </div>
-                )}
+                ) : null}
+                {checkoutPaymentStatus === "paid" && paymentMethod === "room" ? (
+                  <input
+                    className="col-span-2 h-11 rounded-2xl border border-border-subtle bg-white px-4 text-sm"
+                    placeholder="Room number"
+                    value={roomChargeNumber}
+                    onChange={(event) => setRoomChargeNumber(event.target.value)}
+                  />
+                ) : null}
               </div>
 
               <div className="space-y-3 xl:max-h-[320px] xl:overflow-y-auto xl:pr-1">
                 {items.length === 0 ? (
-                  <div className="rounded-[22px] border border-dashed border-border-strong bg-bg-surface px-4 py-8 text-center">
-                    <p className="font-semibold text-text-primary">No items added yet</p>
-                    <p className="mt-1 text-text-secondary">
-                      Select products on the left to start this order.
-                    </p>
+                  <div className="rounded-2xl border border-dashed border-border-strong px-4 py-10 text-center">
+                    <p className="text-sm font-semibold text-text-primary">No items</p>
                   </div>
                 ) : (
                   <AnimatePresence initial={false} mode="popLayout">
@@ -1897,26 +1870,6 @@ export function OrderScreenLive({
                   Clear cart
                 </Button>
                 <Button
-                  className="h-11 rounded-2xl bg-accent-primary hover:bg-accent-primary-hover"
-                  disabled={checkoutProcessing || printBillLoading || isPending || items.length === 0}
-                  aria-busy={checkoutProcessing}
-                  onClick={placeOrderAndPayment}
-                >
-                  {checkoutProcessing ? (
-                    <span className="flex w-full items-center justify-center gap-2">
-                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-                      {checkoutPaymentStatus === "paid" ? "Processing…" : "Saving…"}
-                    </span>
-                  ) : checkoutPaymentStatus === "paid" ? (
-                    "Charge & print bill"
-                  ) : (
-                    "Save unpaid order"
-                  )}
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3">
-                <Button
                   variant="secondary"
                   className="h-11 rounded-2xl"
                   disabled={checkoutProcessing || printBillLoading || items.length === 0}
@@ -1934,37 +1887,23 @@ export function OrderScreenLive({
                 </Button>
               </div>
 
-              <div className="rounded-[22px] border border-border-subtle bg-bg-surface p-4">
-                <p className="label-text">Recent order activity</p>
-                <div className="mt-3 space-y-3">
-                  {orders.slice(0, 5).map((order) => (
-                    <div key={order.id} className="flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          {order.tokenNumber ? (
-                            <span className="inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
-                              #{order.tokenNumber}
-                            </span>
-                          ) : null}
-                        <p className="font-semibold text-text-primary">{order.orderNumber}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                        <p className="capitalize text-text-secondary">{order.status}</p>
-                          {order.createdAt ? (
-                            <span className="flex items-center gap-0.5 text-[10px] text-text-muted">
-                              <Clock className="h-2.5 w-2.5" />
-                              {timeAgo(order.createdAt)}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-                      <Badge variant={order.paymentStatus === "paid" ? "success" : "warning"}>
-                        {order.paymentStatus}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <Button
+                className="h-12 w-full rounded-2xl bg-accent-primary hover:bg-accent-primary-hover"
+                disabled={checkoutProcessing || printBillLoading || isPending || items.length === 0}
+                aria-busy={checkoutProcessing}
+                onClick={placeOrderAndPayment}
+              >
+                {checkoutProcessing ? (
+                  <span className="flex w-full items-center justify-center gap-2">
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                    {checkoutPaymentStatus === "paid" ? "Processing…" : "Saving…"}
+                  </span>
+                ) : checkoutPaymentStatus === "paid" ? (
+                  "Charge & print bill"
+                ) : (
+                  "Save unpaid order"
+                )}
+              </Button>
             </CardContent>
           </Card>
           </motion.div>
