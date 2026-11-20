@@ -1,81 +1,86 @@
+import { redirect } from "next/navigation";
+
 import { AppShellClient } from "@/components/layout/app-shell-client";
 import type { NavigationItem } from "@/components/layout/app-shell-client";
 import { getSession } from "@/lib/auth/get-session";
-import { getRestaurantBundle } from "@/server/repositories/mongo-repository";
-import { enabledModulesOf } from "@/lib/modules";
-import { redirect } from "next/navigation";
 import { connectToDatabase } from "@/lib/db/connect";
-import { MenuItem, ReceiptTemplate, Restaurant } from "@/models";
+import { enabledModulesOf } from "@/lib/modules";
+import { MenuItem, Order, Payment, ReceiptTemplate, Restaurant } from "@/models";
 
+/**
+ * The shell renders on EVERY dashboard page, so it must stay cheap: one
+ * restaurant read plus a few indexed counts. It must never load the full POS
+ * bundle (all orders / payments / menu) — doing that made every page load a
+ * full-collection scan that got slower as the data grew.
+ */
 export async function AppShell({ children }: { children: React.ReactNode }) {
   const session = await getSession();
-  const data = await getRestaurantBundle(session.restaurantId);
+  await connectToDatabase();
 
-  /**
-   * Gate onboarding.
-   *
-   * Important: we DO NOT solely trust `restaurant.onboarding.*` flags because:
-   * - older tenants may have real data (menu/templates) but flags defaulted to false
-   * - a previous write may have failed, causing an onboarding redirect loop
-   *
-   * So if flags indicate "not complete", we verify by checking existence of actual data
-   * and backfill the flags to "heal" the tenant.
-   */
-  if (!data.restaurant) {
+  // One parallel wave: the restaurant document + the POS badge counts.
+  // Counts are indexed and cast the tenant id for us; results are ignored for
+  // non-POS tenants so they never pay a second round trip.
+  const [restaurant, activeOrders, openOrders, kitchen, menuAvailable, payments] = await Promise.all([
+    Restaurant.findById(session.restaurantId).select("name slug enabledModules onboarding").lean(),
+    Order.countDocuments({ restaurantId: session.restaurantId, status: { $ne: "cancelled" } }),
+    Order.countDocuments({ restaurantId: session.restaurantId, status: { $ne: "completed" } }),
+    Order.countDocuments({
+      restaurantId: session.restaurantId,
+      status: { $in: ["placed", "preparing", "ready"] }
+    }),
+    MenuItem.countDocuments({ restaurantId: session.restaurantId, isActive: true, isAvailable: true }),
+    Payment.countDocuments({ restaurantId: session.restaurantId })
+  ]);
+
+  if (!restaurant) {
     redirect(`/onboarding?rid=${encodeURIComponent(session.restaurantId)}`);
   }
 
-  const storedMenuImported = Boolean((data as any).restaurant?.onboarding?.menuImported);
-  const storedReceiptSaved = Boolean((data as any).restaurant?.onboarding?.receiptTemplateSaved);
-
-  let menuImported = storedMenuImported;
-  let receiptTemplateSaved = storedReceiptSaved;
-
-  // Fast-path: if both flags are already true, never hit DB again.
-  if (!(menuImported && receiptTemplateSaved)) {
-    // Menu existence can be derived from already-fetched bundle
-    menuImported = menuImported || (Array.isArray(data.menuItems) && data.menuItems.length > 0);
-
-    // Receipt templates are not in the bundle; do a lightweight count only when needed
-    if (!receiptTemplateSaved) {
-      await connectToDatabase();
-      const templateCount = await ReceiptTemplate.countDocuments({ restaurantId: session.restaurantId });
-      receiptTemplateSaved = templateCount > 0;
-    }
-
-    // If reality says onboarding is done, backfill flags to prevent future loops
-    if (menuImported || receiptTemplateSaved) {
-      const set: Record<string, any> = {};
-      if (menuImported && !storedMenuImported) set["onboarding.menuImported"] = true;
-      if (receiptTemplateSaved && !storedReceiptSaved) set["onboarding.receiptTemplateSaved"] = true;
-
-      if (Object.keys(set).length) {
-        // Best-effort backfill; never block render on it
-        Restaurant.findByIdAndUpdate(session.restaurantId, {
-          $set: set,
-          $currentDate: { "onboarding.completedAt": { $type: "date" } as any }
-        }).catch(() => {});
-      }
-    }
-  }
-
-  // Modules come from the Restaurant document — the dashboard bundle DTO does not carry them.
-  await connectToDatabase();
-  const moduleRow = await Restaurant.findById(session.restaurantId).select("enabledModules").lean();
-  const modules = enabledModulesOf(moduleRow as any);
+  const modules = enabledModulesOf(restaurant as { enabledModules?: string[] | null });
   const posEnabled = modules.includes("pos");
+  const onboarding =
+    (restaurant as { onboarding?: { menuImported?: boolean; receiptTemplateSaved?: boolean } }).onboarding ?? {};
 
-  // POS tenants must finish onboarding (menu + receipt template). Rooms/Banquet-only tenants have neither.
-  const needsOnboarding = posEnabled && !(menuImported && receiptTemplateSaved);
-  if (needsOnboarding) {
-    const rid = (data.restaurant?.id as string) || session.restaurantId;
-    redirect(`/onboarding?rid=${encodeURIComponent(rid)}`);
+  let menuImported = Boolean(onboarding.menuImported);
+  let receiptTemplateSaved = Boolean(onboarding.receiptTemplateSaved);
+
+  /**
+   * POS tenants must finish onboarding. When the flags say "not done", verify the
+   * real data once and heal the flags — never trust old flags blindly (that
+   * caused redirect loops) and never load the whole menu to check.
+   */
+  if (posEnabled && !(menuImported && receiptTemplateSaved)) {
+    const [hasMenu, hasTemplate] = await Promise.all([
+      menuImported
+        ? Promise.resolve(true)
+        : MenuItem.exists({ restaurantId: session.restaurantId, isActive: true }),
+      receiptTemplateSaved
+        ? Promise.resolve(true)
+        : ReceiptTemplate.exists({ restaurantId: session.restaurantId })
+    ]);
+
+    menuImported = menuImported || Boolean(hasMenu);
+    receiptTemplateSaved = receiptTemplateSaved || Boolean(hasTemplate);
+
+    const set: Record<string, unknown> = {};
+    if (menuImported && !onboarding.menuImported) set["onboarding.menuImported"] = true;
+    if (receiptTemplateSaved && !onboarding.receiptTemplateSaved) set["onboarding.receiptTemplateSaved"] = true;
+
+    if (Object.keys(set).length) {
+      Restaurant.findByIdAndUpdate(session.restaurantId, {
+        $set: set,
+        $currentDate: { "onboarding.completedAt": { $type: "date" } as never }
+      }).catch(() => {});
+    }
   }
 
-  // Count active kitchen orders for badge
-  const kitchenOrders = data.orders.filter(
-    (o) => o.status === "placed" || o.status === "preparing" || o.status === "ready"
-  ).length;
+  if (posEnabled && !(menuImported && receiptTemplateSaved)) {
+    redirect(`/onboarding?rid=${encodeURIComponent(session.restaurantId)}`);
+  }
+
+  const badge = posEnabled
+    ? { activeOrders, openOrders, kitchen, menuAvailable, payments }
+    : { activeOrders: 0, openOrders: 0, kitchen: 0, menuAvailable: 0, payments: 0 };
 
   const navigation: NavigationItem[] = [
     ...(posEnabled
@@ -83,21 +88,21 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           {
             href: "/dashboard",
             label: "Dashboard",
-            badge: `${data.orders.filter((order) => order.status !== "cancelled").length}`
+            badge: `${badge.activeOrders}`
           },
           {
             href: "/orders",
             label: "Orders",
-            badge: `${data.orders.filter((order) => order.status !== "completed").length}`
+            badge: `${badge.openOrders}`
           },
-          { href: "/kitchen", label: "Kitchen", badge: `${kitchenOrders}` },
+          { href: "/kitchen", label: "Kitchen", badge: `${badge.kitchen}` },
           {
             href: "/menu",
             label: "Menu",
-            badge: `${data.menuItems.filter((item) => item.isAvailable).length}`
+            badge: `${badge.menuAvailable}`
           },
           { href: "/inventory", label: "Inventory", badge: "" },
-          { href: "/payments", label: "Payments", badge: `${data.payments.length}` },
+          { href: "/payments", label: "Payments", badge: `${badge.payments}` },
           { href: "/crm", label: "CRM", badge: "" },
           { href: "/insights", label: "Insights", badge: "" },
           { href: "/whatsapp", label: "WhatsApp", badge: "" },
@@ -139,8 +144,8 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       navigation={navigation}
       hotelNavigation={hotelNavigation}
       banquetNavigation={banquetNavigation}
-      restaurantName={data.restaurant?.name ?? "Restaurant"}
-      restaurantSlug={data.restaurant?.slug ?? "workspace"}
+      restaurantName={restaurant.name}
+      restaurantSlug={restaurant.slug}
       userName={session.name}
       userRole={session.role}
     >

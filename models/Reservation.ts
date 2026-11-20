@@ -42,7 +42,9 @@ const reservationSchema = new Schema(
 );
 
 reservationSchema.index({ restaurantId: 1, roomId: 1, checkIn: 1, checkOut: 1 });
+reservationSchema.index({ restaurantId: 1, checkIn: 1, checkOut: 1 });
 reservationSchema.index({ restaurantId: 1, status: 1, checkIn: 1 });
+reservationSchema.index({ restaurantId: 1, status: 1, checkOut: 1 });
 
 export type ReservationDocument = InferSchemaType<typeof reservationSchema>;
 export const Reservation: Model<ReservationDocument> =

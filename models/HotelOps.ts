@@ -61,6 +61,7 @@ const maintenanceTicketSchema = new Schema(
 );
 
 maintenanceTicketSchema.index({ restaurantId: 1, roomId: 1, status: 1 });
+maintenanceTicketSchema.index({ restaurantId: 1, status: 1 });
 
 export type MaintenanceTicketDocument = InferSchemaType<typeof maintenanceTicketSchema>;
 export const MaintenanceTicket: Model<MaintenanceTicketDocument> =

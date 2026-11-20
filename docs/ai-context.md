@@ -249,6 +249,21 @@ Split payments at checkout (multiple rows already supported by the ledger) · se
 banquet enquiries · per-user shift reconciliation beyond cash totals.
 
 
+## Performance notes (do not regress)
+- **`AppShell` must never load the POS bundle.** The layout renders on every dashboard page, so it reads one
+  `Restaurant` document (`name slug enabledModules onboarding`) plus **indexed counts** for the nav badges, all in a
+  single `Promise.all` wave. It used to call `getRestaurantBundle()` → every page load fetched *all* orders, payments,
+  menu items, categories, variants and addons (unbounded collections). Measured on the heaviest tenant: 86 documents /
+  40 KB per page load before, 1 document / ~0 KB after.
+- POS pages (`/dashboard`, `/orders`, `/menu`, …) still call `getRestaurantBundle()` themselves — that's fine, they
+  need the data. Never move it back into the shell.
+- `loading.tsx` skeletons exist for `/hotel`, `/rooms`, `/hotel/reports` (`components/hotel/hotel-skeleton.tsx`) so
+  navigation paints immediately.
+- Indexes for the hot read paths: `Reservation {restaurantId, checkIn, checkOut}`, `{restaurantId, status, checkOut}`
+  and `MaintenanceTicket {restaurantId, status}`.
+- `next dev` compiles each route on first visit (5–15 s) — that is **not** production speed. Measure with
+  `npm run build && npm start`, and never run `build` while `dev` is running (they share `.next`).
+
 ## Gotchas (hotel)
 1. Dates are **UTC midnight date-only**; display uses the property timezone. Never store local-time Dates.
 2. `Reservation.guestId` points at `Customer`, not a new Guest collection.

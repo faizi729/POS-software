@@ -30,3 +30,38 @@
  GET /rooms 200 in 7508ms
  ✓ Compiled in 1628ms (1224 modules)
  ✓ Compiled in 365ms (1224 modules)
+ ✓ Compiled in 1312ms (1224 modules)
+ ✓ Compiled in 295ms (1224 modules)
+ ✓ Compiled in 724ms (1224 modules)
+ ✓ Compiled in 316ms (1224 modules)
+ ✓ Compiled in 671ms (1224 modules)
+ ✓ Compiled in 385ms (1224 modules)
+ ✓ Compiled in 514ms (1224 modules)
+ ✓ Compiled in 520ms (1224 modules)
+ ✓ Compiled in 628ms (1224 modules)
+ ✓ Compiled in 630ms (1224 modules)
+ ○ Compiling /api/auth/login ...
+ ✓ Compiled /api/auth/login in 809ms (307 modules)
+ POST /api/auth/login 200 in 1719ms
+ ○ Compiling /hotel ...
+ ✓ Compiled /hotel in 2.2s (2292 modules)
+ GET /hotel 200 in 3676ms
+ ○ Compiling /rooms ...
+ ✓ Compiled /rooms in 864ms (2302 modules)
+ GET /rooms 200 in 2174ms
+ ✓ Compiled in 546ms (1224 modules)
+ ○ Compiling /dashboard ...
+ ✓ Compiled /dashboard in 3s (2811 modules)
+The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+ GET /dashboard 200 in 4499ms
+ ○ Compiling /hotel/rates ...
+ ✓ Compiled /hotel/rates in 545ms (1599 modules)
+ GET /hotel/rates 200 in 1333ms
+ ○ Compiling /hotel/reports ...
+ ✓ Compiled /hotel/reports in 835ms (2825 modules)
+ GET /hotel/reports 200 in 1903ms
+ ✓ Compiled in 632ms (1232 modules)
+ ✓ Compiled in 503ms (1232 modules)
