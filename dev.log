@@ -8,29 +8,25 @@
    - Environments: .env
 
  ✓ Starting...
- ✓ Ready in 2.6s
- ○ Compiling /hotel/maintenance ...
- ✓ Compiled /hotel/maintenance in 8.3s (1694 modules)
- ○ Compiling /_not-found ...
- ✓ Compiled /_not-found in 2.3s (1699 modules)
- GET /hotel/maintenance 404 in 11709ms
- ○ Compiling /api/restaurant/config ...
- ✓ Compiled /api/restaurant/config in 1930ms (1719 modules)
- GET /api/restaurant/config 200 in 6489ms
+ ✓ Ready in 2.3s
  ○ Compiling /api/auth/login ...
- ✓ Compiled /api/auth/login in 2.1s (1779 modules)
- GET /hotel/maintenance 200 in 813ms
- POST /api/auth/login 200 in 3089ms
+ ✓ Compiled /api/auth/login in 4.2s (502 modules)
+ POST /api/auth/login 200 in 8662ms
  ○ Compiling /hotel ...
- ✓ Compiled /hotel in 2.2s (1805 modules)
- GET /hotel 200 in 3735ms
- GET /hotel/maintenance 200 in 1836ms
- ○ Compiling /hotel/rates ...
- ✓ Compiled /hotel/rates in 1135ms (1802 modules)
- GET /hotel/rates 200 in 2184ms
- ○ Compiling /hotel/reports ...
- ✓ Compiled /hotel/reports in 1180ms (1812 modules)
- GET /hotel/reports 200 in 2321ms
- GET /hotel/maintenance 200 in 413ms
+ ✓ Compiled /hotel in 4.6s (1799 modules)
+ GET /hotel 200 in 5557ms
+ ✓ Compiled /hotel/rates in 358ms (1787 modules)
+ GET /hotel/rates 200 in 845ms
+ ✓ Compiled /hotel/reports in 293ms (1797 modules)
+ GET /hotel/reports 200 in 887ms
+ ○ Compiling /hotel/maintenance ...
+ ✓ Compiled /hotel/maintenance in 848ms (1805 modules)
+ GET /hotel/maintenance 200 in 1468ms
  ○ Compiling /reports ...
-[?25h
+ ✓ Compiled /reports in 4.7s (2820 modules)
+ GET /reports 200 in 7749ms
+ ○ Compiling /rooms ...
+ ✓ Compiled /rooms in 6.2s (2830 modules)
+ GET /rooms 200 in 7508ms
+ ✓ Compiled in 1628ms (1224 modules)
+ ✓ Compiled in 365ms (1224 modules)

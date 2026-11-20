@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { z } from "zod";
 
 import { fail, handleRouteError, ok } from "@/lib/api/response";
 import { withAuth } from "@/lib/auth/with-auth";
@@ -94,5 +93,3 @@ export async function POST(request: NextRequest) {
     return handleRouteError(error);
   }
 }
-
-export const guestSearchSchema = z.object({ q: z.string().optional() });
