@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { HydratedDocument } from "mongoose";
 import { connectToDatabase } from "@/lib/db/connect";
-import { Restaurant } from "@/models/Restaurant";
-import { User } from "@/models/User";
+import { Restaurant, type RestaurantDocument } from "@/models/Restaurant";
+import { User, type UserDocument } from "@/models/User";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { signAuthJwt, signPendingTwoFactorJwt } from "@/lib/auth/jwt";
 import { generateSixDigitOtp } from "@/lib/auth/otp";
@@ -53,33 +54,54 @@ export async function POST(req: NextRequest) {
         return slugFromHost ? await resolveRestaurantIdBySlug(slugFromHost) : null;
       })());
 
-    // Prefer host/custom domain when it resolves to a tenant (isolation on per-tenant domains).
-    // If the host does not map to a restaurant (e.g. localhost, apex, or *.vercel.app ≠ workspace slug),
-    // fall back to the workspace slug from the body — same as the login form sends everywhere.
-    let restaurantQuery: any = { status: "active" };
+    // Resolve the workspace automatically:
+    //  1. host/subdomain/custom domain wins (per-domain isolation),
+    //  2. else a legacy API caller may still send a slug,
+    //  3. else normal login: email + password only (email is unique per workspace,
+    //     so the password decides which workspace you belong to).
+    const slugFromBody = parsed.data.restaurantSlug?.trim().toLowerCase() || null;
+
+    let restaurant: HydratedDocument<RestaurantDocument> | null = null;
+    let user: HydratedDocument<UserDocument> | null = null;
+
     if (rid) {
-      restaurantQuery._id = rid;
+      restaurant = await Restaurant.findOne({ _id: rid, status: "active" });
+      if (restaurant) user = await User.findOne({ restaurantId: restaurant._id, email });
+    } else if (slugFromBody) {
+      restaurant = await Restaurant.findOne({ slug: slugFromBody, status: "active" });
+      if (restaurant) user = await User.findOne({ restaurantId: restaurant._id, email });
     } else {
-      const slugFromBody = parsed.data.restaurantSlug?.trim().toLowerCase() || null;
-      if (!slugFromBody) {
-        return NextResponse.json(
-          {
-            error:
-              "Missing restaurant/workspace identifier. Enter your workspace slug, or use your restaurant subdomain/custom domain."
-          },
-          { status: 400 }
-        );
+      const candidates = await User.find({ email, status: "active" }).limit(5);
+      if (candidates.length) {
+        const active = await Restaurant.find({
+          _id: { $in: candidates.map((candidate) => candidate.restaurantId) },
+          status: "active"
+        })
+          .select("_id")
+          .lean();
+        const activeSet = new Set(active.map((row) => String(row._id)));
+
+        const matches: Array<HydratedDocument<UserDocument>> = [];
+        for (const candidate of candidates) {
+          if (!activeSet.has(String(candidate.restaurantId))) continue;
+          if (await verifyPassword(password, candidate.passwordHash)) matches.push(candidate);
+        }
+
+        if (matches.length > 1) {
+          return NextResponse.json(
+            { error: "This email belongs to more than one workspace. Sign in from your workspace URL." },
+            { status: 409 }
+          );
+        }
+
+        if (matches.length === 1) {
+          user = matches[0];
+          restaurant = await Restaurant.findById(user.restaurantId);
+        }
       }
-      restaurantQuery.slug = slugFromBody;
     }
 
-    const restaurant = await Restaurant.findOne(restaurantQuery);
-    if (!restaurant) {
-      return NextResponse.json({ error: "Restaurant not found" }, { status: 404 });
-    }
-
-    const user = await User.findOne({ restaurantId: restaurant._id, email });
-    if (!user || !(await verifyPassword(password, user.passwordHash))) {
+    if (!restaurant || !user || !(await verifyPassword(password, user.passwordHash))) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 

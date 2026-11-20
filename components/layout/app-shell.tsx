@@ -115,9 +115,9 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     { href: "/hotel", label: "Overview", badge: "" },
     { href: "/rooms", label: "Rooms", badge: "" },
     { href: "/housekeeping", label: "Housekeeping", badge: "" },
-    { href: "/maintenance", label: "Maintenance", badge: "" },
-    { href: "/rates", label: "Rates", badge: "" },
-    { href: "/reports", label: "Reports", badge: "" },
+    { href: "/hotel/maintenance", label: "Maintenance", badge: "" },
+    { href: "/hotel/rates", label: "Rates", badge: "" },
+    { href: "/hotel/reports", label: "Reports", badge: "" },
     { href: "/rooms/setup", label: "Setup", badge: "" },
     ...(modules.includes("banquet")
       ? [{ href: "/banquet", label: "Banquet", badge: "" } satisfies NavigationItem]

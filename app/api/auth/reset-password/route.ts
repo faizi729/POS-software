@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { connectToDatabase } from "@/lib/db/connect";
-import { Restaurant } from "@/models/Restaurant";
 import { User } from "@/models/User";
 import { hashPassword } from "@/lib/auth/password";
 import { sha256Hex } from "@/lib/auth/reset-token";
@@ -10,7 +9,8 @@ import { getClientIp, rateLimit } from "@/lib/middleware/rate-limit";
 
 const bodySchema = z.object({
   token: z.string().min(32),
-  restaurantSlug: z.string().min(2).max(80),
+  /** Legacy: ignored. The token alone identifies the account. */
+  restaurantSlug: z.string().min(2).max(80).optional(),
   password: z.string().min(8)
 });
 
@@ -33,16 +33,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid input" }, { status: 400 });
     }
 
-    const slug = parsed.data.restaurantSlug.trim().toLowerCase();
     const tokenHash = sha256Hex(parsed.data.token.trim());
 
-    const restaurant = await Restaurant.findOne({ slug, status: "active" }).select("_id").lean();
-    if (!restaurant) {
-      return NextResponse.json({ error: "Invalid or expired link" }, { status: 400 });
-    }
-
+    // The token hash is unique across accounts, so no workspace lookup is needed.
     const user = await User.findOne({
-      restaurantId: restaurant._id,
       passwordResetTokenHash: tokenHash,
       passwordResetExpires: { $gt: new Date() }
     });

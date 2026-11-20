@@ -49,8 +49,9 @@ export type NavHref =
   | "/rooms"
   | "/banquet"
   | "/hotel"
-  | "/maintenance"
-  | "/rates"
+  | "/hotel/rates"
+  | "/hotel/reports"
+  | "/hotel/maintenance"
   | "/rooms/setup"
   | "/housekeeping"
   | "/banquet/halls";
@@ -76,8 +77,9 @@ const icons: Record<NavHref, React.ComponentType<{ className?: string }>> = {
   "/rooms": BedDouble,
   "/banquet": PartyPopper,
   "/hotel": BedDouble,
-  "/maintenance": Wrench,
-  "/rates": Tag,
+  "/hotel/maintenance": Wrench,
+  "/hotel/rates": Tag,
+  "/hotel/reports": PieChart,
   "/rooms/setup": Settings,
   "/housekeeping": Sparkles,
   "/banquet/halls": Building2,

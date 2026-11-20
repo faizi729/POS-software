@@ -15,10 +15,9 @@ import { toast } from "@/lib/toast";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [restaurantSlug, setRestaurantSlug] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<{ restaurantSlug?: string; email?: string; password?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
 
   const [step, setStep] = useState<"password" | "2fa">("password");
   const [pendingToken, setPendingToken] = useState<string | null>(null);
@@ -28,7 +27,6 @@ export default function LoginPage() {
   async function onSubmitPassword(e: React.FormEvent) {
     e.preventDefault();
     const nextErrors: typeof fieldErrors = {};
-    if (!restaurantSlug.trim()) nextErrors.restaurantSlug = "Workspace slug is required.";
     if (!email.trim()) nextErrors.email = "Email is required.";
     if (!password.trim()) nextErrors.password = "Password is required.";
     setFieldErrors(nextErrors);
@@ -43,7 +41,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, restaurantSlug })
+        body: JSON.stringify({ email, password })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -141,7 +139,7 @@ export default function LoginPage() {
           <CardHeader className="p-6">
             <p className="label-text">Welcome back</p>
             <h2 className="mt-2">
-              {step === "password" ? "Sign in to your restaurant workspace" : "Enter your email code"}
+              {step === "password" ? "Sign in" : "Enter your email code"}
             </h2>
             {step === "2fa" ? (
               <p className="mt-2 text-sm text-text-secondary">
@@ -152,19 +150,6 @@ export default function LoginPage() {
           <CardContent className="space-y-4 px-6 pb-6">
             {step === "password" ? (
               <form className="space-y-4" onSubmit={onSubmitPassword}>
-                <div className="space-y-2">
-                  <label className="label-text">Workspace (slug)</label>
-                  <Input
-                    type="text"
-                    placeholder="amberyard"
-                    value={restaurantSlug}
-                    onChange={(e) => setRestaurantSlug(e.target.value)}
-                    disabled={loading}
-                    autoComplete="organization"
-                    aria-invalid={Boolean(fieldErrors.restaurantSlug)}
-                  />
-                  <FieldError message={fieldErrors.restaurantSlug} />
-                </div>
                 <div className="space-y-2">
                   <label className="label-text">Email</label>
                   <Input

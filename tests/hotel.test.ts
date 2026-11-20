@@ -6,6 +6,7 @@ import { addDays, eachNight, nightsBetween, overlaps, toUtcDate } from "../lib/h
 import { financialYear, formatInvoiceNumber } from "../lib/hotel/invoice-format.ts";
 import { percentOf, roundPaise, sumPaise, toPaise, toRupees } from "../lib/hotel/money.ts";
 import { DEFAULT_GST_SLABS, nightTax, normalizeSlabs, slabPercentFor, stayTax } from "../lib/hotel/tax.ts";
+import { roomState, roomStateCounts, type RoomState } from "../lib/hotel/room-status.ts";
 
 test("money: paise <-> rupees round-trips without drift", () => {
   assert.equal(toPaise(3000), 300_000);
@@ -115,4 +116,42 @@ test("invoice: numbers are zero-padded and monotonic", () => {
   assert.equal(formatInvoiceNumber("INV", "2026-27", 1), "INV/2026-27/00001");
   assert.equal(formatInvoiceNumber("INV", "2026-27", 42), "INV/2026-27/00042");
   assert.notEqual(formatInvoiceNumber("INV", "2026-27", 1), formatInvoiceNumber("INV", "2026-27", 2));
+});
+
+test("room status: an in-house guest wins over dirty or maintenance flags", () => {
+  assert.equal(roomState({ status: "dirty", inHouse: true }), "occupied");
+  assert.equal(roomState({ status: "maintenance", inHouse: true, openTicket: true }), "occupied");
+  assert.equal(roomState({ status: "occupied" }), "occupied");
+});
+
+test("room status: an open ticket outranks dirty", () => {
+  assert.equal(roomState({ status: "dirty", openTicket: true }), "maintenance");
+  assert.equal(roomState({ status: "available", openTicket: true }), "maintenance");
+  assert.equal(roomState({ status: "maintenance" }), "maintenance");
+});
+
+test("room status: dirty, vacant and empty input", () => {
+  assert.equal(roomState({ status: "dirty" }), "dirty");
+  assert.equal(roomState({ status: "available" }), "vacant");
+  assert.equal(roomState({}), "vacant");
+});
+
+test("room status counts: totals + occupancy, no double counting", () => {
+  const states: RoomState[] = ["occupied", "occupied", "vacant", "dirty", "maintenance"];
+  const counts = roomStateCounts(states);
+  assert.deepEqual(counts, {
+    total: 5,
+    occupied: 2,
+    vacant: 1,
+    dirty: 1,
+    maintenance: 1,
+    occupancyPercent: 40
+  });
+  assert.equal(counts.occupied + counts.vacant + counts.dirty + counts.maintenance, counts.total);
+});
+
+test("room status counts: empty hotel is 0% not NaN", () => {
+  const counts = roomStateCounts([]);
+  assert.equal(counts.total, 0);
+  assert.equal(counts.occupancyPercent, 0);
 });

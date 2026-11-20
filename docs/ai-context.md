@@ -38,7 +38,14 @@ Routes export `maxDuration = 120` (Document AI jobs are async).
 - `app/super-admin/(protected)/tenants/new/` + `components/super-admin/new-tenant-form.tsx` — create tenant **and** its owner; `POST /api/super-admin/tenants` now accepts optional `ownerEmail/ownerPassword/ownerName/twoFactorEnabled`.
 - `tenants/[id]/page.tsx` guards non-ObjectId paths (`isValidObjectId` → redirect) so `/tenants/new` no longer throws `Cast to ObjectId`.
 
-## Env (Sarvam)
+## Auth (tenant users)
+**Login is normal email + password — no workspace slug.** `POST /api/auth/login` resolves the workspace in this order:
+host/subdomain/custom domain → optional `restaurantSlug` (legacy API callers) → email lookup, where the password
+picks the account. If the same email + password exists in two workspaces it returns `409` asking for the workspace
+URL; wrong credentials always return the same `401 Invalid credentials`.
+Forgot/reset are email-only too: the reset link carries just `?token=…` (the token hash is unique across accounts),
+and a shared email across workspaces gets one link per account.
+
 ```
 SARVAM_API_KEY=...                  # required
 # SARVAM_CHAT_MODEL=glm5.3-flash     # default for all tasks
@@ -213,8 +220,29 @@ without keys) fires on booking/payment events. `POST /api/hotel/guests/scan` pre
 room to `maintenance`, booking a maintenance room is refused, and closing the last ticket frees the room.
 
 ## Screens added
-`/rates` (plans + rate-card import) · `/maintenance` (tickets) · `/reports` (KPIs, daily table, CSV, night-audit
-close) · `/book/[slug]` (public) — all in the hotel sidebar.
+`/hotel/rates` (plans + rate-card import) · `/hotel/maintenance` (tickets) · `/hotel/reports` (KPIs, daily table, CSV,
+night-audit close) · `/book/[slug]` (public) — all reached from the hotel sidebar.
+**Every hotel screen lives under `/hotel/*`** on purpose: the POS already owns `/reports`, so namespacing keeps the
+two workspaces apart. The sidebar switch is purely path-based (`/hotel|/rooms|/housekeeping` → hotel nav, `/banquet`
+→ banquet nav, everything else → POS nav); adding a hotel screen under `/hotel/<name>` needs no switch change.
+
+
+## Front desk + room master (Phase 1–2)
+- **`/hotel` is the control room**: a **Rooms** card (Total · Occupied · Vacant · Dirty · Maintenance + occupancy %,
+  plus a per-floor chip map — tap a room to open the calendar), then In-house / Arrivals / Departures / Events tiles,
+  a quick-action row, and `FrontDeskBoard` (`components/hotel/front-desk-board.tsx`) with **Arrivals → Assign /
+  Check in**, **Due out → Check out** and **Dirty → Clean**. *Assign* opens the rooms that are genuinely free for that
+  stay and calls the existing `PATCH { action: "move" }` — so assigning, upgrading and mid-stay moving are one code
+  path. `GET /api/hotel/rooms/available?checkIn&checkOut&roomTypeId&ignoreReservationId` backs it.
+- **Room state is canonicalised** in `lib/hotel/room-status.ts` (unit-tested): in-house guest → **occupied** (even if
+  the room flag says dirty/maintenance), open maintenance ticket → **maintenance**, else dirty, else **vacant**.
+  The five counts always sum to the total; never derive them from `Room.status` alone.
+- **`/rooms/setup` is a room master**: inline edit of room types (name, rate, GST, occupancy) and rooms
+  (number, floor, type, status), single add, **bulk add** (`POST /api/hotel/rooms/bulk`, "101 → 110"), delete
+  guards. `PATCH /api/hotel/rooms/[id]` only writes the keys sent, refuses `available` while a maintenance ticket is
+  open, refuses `occupied` without an in-house guest, and logs an audit entry.
+- The calendar's rate column now converts paise → rupees (was printing 100× the amount).
+
 
 ## Not built yet
 Split payments at checkout (multiple rows already supported by the ledger) · seasonal rate calendar UI · public

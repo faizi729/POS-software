@@ -15,7 +15,6 @@ import { toast } from "@/lib/toast";
 function ResetPasswordForm() {
   const searchParams = useSearchParams();
   const token = (searchParams.get("token") || "").trim();
-  const slug = (searchParams.get("slug") || "").trim().toLowerCase();
 
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
@@ -32,7 +31,7 @@ function ResetPasswordForm() {
     setFieldErrors(next);
     if (Object.keys(next).length > 0) return;
 
-    if (!token || !slug) {
+    if (!token) {
       setError("Invalid reset link. Request a new one from forgot password.");
       return;
     }
@@ -43,7 +42,7 @@ function ResetPasswordForm() {
       const res = await fetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, restaurantSlug: slug, password })
+        body: JSON.stringify({ token, password })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -60,10 +59,10 @@ function ResetPasswordForm() {
     }
   }
 
-  if (!token || !slug) {
+  if (!token) {
     return (
       <p className="text-sm text-text-secondary">
-        This link is missing a token or workspace.{" "}
+        This link is missing a token.{" "}
         <Link
           href={"/forgot-password" as Parameters<typeof Link>[0]["href"]}
           className="font-semibold text-accent-primary hover:underline"

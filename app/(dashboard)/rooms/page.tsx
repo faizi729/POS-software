@@ -5,6 +5,7 @@ import { RoomsCalendar, type CalendarReservation, type CalendarRoom } from "@/co
 import { requireSession } from "@/lib/auth/guards";
 import { connectToDatabase } from "@/lib/db/connect";
 import { addDays, expireStaleHolds, toUtcDate } from "@/lib/hotel/availability";
+import { toRupees } from "@/lib/hotel/money";
 import { hasModule } from "@/lib/modules";
 import { Reservation, Restaurant, Room, RoomType } from "@/models";
 
@@ -65,7 +66,7 @@ export default async function RoomsPage() {
       checkIn: iso(new Date(reservation.checkIn)),
       checkOut: iso(new Date(reservation.checkOut)),
       status: reservation.status,
-      rate: reservation.rateSnapshot ?? 0
+      rate: toRupees(reservation.rateSnapshot ?? 0)
     };
   });
 

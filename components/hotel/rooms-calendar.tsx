@@ -323,7 +323,7 @@ function ReservationForm({
         >
           {rooms.map((room) => (
             <option key={room.id} value={room.id}>
-              {room.number} / {room.roomTypeName}
+              {room.number} · {room.roomTypeName} · {formatCurrency(room.baseRate)}
             </option>
           ))}
         </select>

@@ -13,16 +13,14 @@ import { toast } from "@/lib/toast";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
-  const [restaurantSlug, setRestaurantSlug] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<{ restaurantSlug?: string; email?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string }>({});
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const next: typeof fieldErrors = {};
-    if (!restaurantSlug.trim()) next.restaurantSlug = "Workspace slug is required.";
     if (!email.trim()) next.email = "Email is required.";
     setFieldErrors(next);
     if (Object.keys(next).length > 0) {
@@ -36,7 +34,7 @@ export default function ForgotPasswordPage() {
       const res = await fetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, restaurantSlug })
+        body: JSON.stringify({ email })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -70,7 +68,7 @@ export default function ForgotPasswordPage() {
             </div>
             <h1 className="mt-3 max-w-xl text-[2.5rem] leading-[2.9rem] tracking-[-0.04em]">Reset access safely.</h1>
             <p className="mt-4 max-w-lg text-base leading-7">
-              We will email you a single-use link if the workspace and email match an account. Links expire in one hour.
+              We will email you a single-use link if the email matches an account. Links expire in one hour.
             </p>
           </div>
         </section>
@@ -83,7 +81,7 @@ export default function ForgotPasswordPage() {
           <CardContent className="space-y-4 px-6 pb-6">
             {done ? (
               <p className="text-sm text-text-secondary">
-                If an account exists for that workspace and email, we sent instructions. Check your spam folder, then{" "}
+                If an account exists for that email, we sent instructions. Check your spam folder, then{" "}
                 <Link href="/login" className="font-semibold text-accent-primary hover:underline">
                   return to sign in
                 </Link>
@@ -91,18 +89,6 @@ export default function ForgotPasswordPage() {
               </p>
             ) : (
               <form className="space-y-4" onSubmit={onSubmit}>
-                <div className="space-y-2">
-                  <label className="label-text">Workspace (slug)</label>
-                  <Input
-                    type="text"
-                    placeholder="amberyard"
-                    value={restaurantSlug}
-                    onChange={(e) => setRestaurantSlug(e.target.value.toLowerCase())}
-                    disabled={loading}
-                    aria-invalid={Boolean(fieldErrors.restaurantSlug)}
-                  />
-                  <FieldError message={fieldErrors.restaurantSlug} />
-                </div>
                 <div className="space-y-2">
                   <label className="label-text">Email</label>
                   <Input

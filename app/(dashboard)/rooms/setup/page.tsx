@@ -28,7 +28,8 @@ export default async function RoomsSetupPage() {
     name: type.name,
     baseRate: type.baseRate,
     maxOccupancy: type.maxOccupancy ?? 2,
-    gstPercent: type.gstPercent ?? 12
+    gstPercent: type.gstPercent ?? 12,
+    amenities: type.amenities ?? []
   }));
 
   const typeNameById = new Map(types.map((type) => [type.id, type.name]));
